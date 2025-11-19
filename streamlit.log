@@ -1,0 +1,58 @@
+Traceback (most recent call last):
+  File "/Users/dipen/ExtraProjects/TrajAI/.venv/bin/streamlit", line 7, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/Users/dipen/ExtraProjects/TrajAI/.venv/lib/python3.13/site-packages/click/core.py", line 1485, in __call__
+    return self.main(*args, **kwargs)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/dipen/ExtraProjects/TrajAI/.venv/lib/python3.13/site-packages/click/core.py", line 1406, in main
+    rv = self.invoke(ctx)
+  File "/Users/dipen/ExtraProjects/TrajAI/.venv/lib/python3.13/site-packages/click/core.py", line 1873, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+                           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/dipen/ExtraProjects/TrajAI/.venv/lib/python3.13/site-packages/click/core.py", line 1269, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/dipen/ExtraProjects/TrajAI/.venv/lib/python3.13/site-packages/click/core.py", line 824, in invoke
+    return callback(*args, **kwargs)
+  File "/Users/dipen/ExtraProjects/TrajAI/.venv/lib/python3.13/site-packages/streamlit/web/cli.py", line 251, in main_run
+    _main_run(path_str, args, flag_options=kwargs)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/dipen/ExtraProjects/TrajAI/.venv/lib/python3.13/site-packages/streamlit/web/cli.py", line 308, in _main_run
+    bootstrap.run(file, is_hello, args, flag_options)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/dipen/ExtraProjects/TrajAI/.venv/lib/python3.13/site-packages/streamlit/web/bootstrap.py", line 332, in run
+    asyncio.run(main())
+    ~~~~~~~~~~~^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/asyncio/base_events.py", line 725, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/Users/dipen/ExtraProjects/TrajAI/.venv/lib/python3.13/site-packages/streamlit/web/bootstrap.py", line 309, in main
+    await run_server()
+  File "/Users/dipen/ExtraProjects/TrajAI/.venv/lib/python3.13/site-packages/streamlit/web/bootstrap.py", line 291, in run_server
+    await server.start()
+  File "/Users/dipen/ExtraProjects/TrajAI/.venv/lib/python3.13/site-packages/streamlit/web/server/server.py", line 345, in start
+    start_listening(app)
+    ~~~~~~~~~~~~~~~^^^^^
+  File "/Users/dipen/ExtraProjects/TrajAI/.venv/lib/python3.13/site-packages/streamlit/web/server/server.py", line 190, in start_listening
+    start_listening_tcp_socket(http_server)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/dipen/ExtraProjects/TrajAI/.venv/lib/python3.13/site-packages/streamlit/web/server/server.py", line 257, in start_listening_tcp_socket
+    http_server.listen(port, address)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "/Users/dipen/ExtraProjects/TrajAI/.venv/lib/python3.13/site-packages/tornado/tcpserver.py", line 183, in listen
+    sockets = bind_sockets(
+        port,
+    ...<4 lines>...
+        reuse_port=reuse_port,
+    )
+  File "/Users/dipen/ExtraProjects/TrajAI/.venv/lib/python3.13/site-packages/tornado/netutil.py", line 162, in bind_sockets
+    sock.bind(sockaddr)
+    ~~~~~~~~~^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted

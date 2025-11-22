@@ -5,12 +5,12 @@ A graduate-level AI stack that marries sequence modeling, retrieval-augmented re
 
 ## 🚀 Features
 - Deep learning trajectory model (PyTorch LSTM with configurable windows and horizons)
-- Agentic layer powered by LangChain’s ReAct agent and Llama 3 reasoning
+- LLM-powered explanations and risk analysis for model outputs
 - Retrieval-Augmented Generation (RAG) for safety rules, weather, and contextual policies
 - FastAPI backend with production-ready endpoints
-- Streamlit UI for visualization, analytics, and conversational agent access
+- Streamlit UI for visualization and analytics
 - Modular Python architecture with clean separation of data, model, agent, API, and app layers
-- Industrial-grade explanations, quantified risk scores, and an agent that can route between tools
+- Industrial-grade explanations and quantified risk scores
 
 ## 📊 Dataset Description
 - 9,400 CSV files containing per-frame telemetry: `Local_X`, `Local_Y`, `v_Vel`, `v_Acc`, `Space_Headway`, `dis_cen`, `i_l`, `i_r`, `i_f`, `dis_l`, `dis_r`, `dis_f`.
@@ -23,13 +23,13 @@ A graduate-level AI stack that marries sequence modeling, retrieval-augmented re
 - Train/validation split (80/20) tracks the best checkpoint saved under `model/checkpoints/`.
 - CLI arguments expose batch size, epochs, window size, dropout, etc.
 
-## 🤖 Agentic AI (LangChain + Llama 3)
+## 🤖 LLM Reasoning (Llama 3)
 - Tools:
   - `predict_trajectory`: wraps inference pipeline.
   - `explain_trajectory`: prompts Llama 3 for context-aware explanations.
   - `trajectory_risk_assessment`: prompts Llama 3 for risk scoring + mitigation.
   - `context_query`: bridges into the RAG subsystem for knowledge retrieval.
-- Agent pipeline uses LangChain’s Zero-Shot ReAct agent with conversation memory and parsing-resilient reasoning.
+- LangChain wrapper simplifies calling hosted Llama 3 endpoints for explanation, risk, and retrieval flows.
 
 ## 🧩 RAG System
 - Documents (`agent/rag/processed_docs/`) are chunked with RecursiveCharacterTextSplitter.
@@ -41,12 +41,11 @@ A graduate-level AI stack that marries sequence modeling, retrieval-augmented re
 - `/predict`: run inference on uploaded sequences.
 - `/explain`: generate natural-language explanation for a prediction/metadata pair.
 - `/risk`: obtain risk score, factors, and recommendations.
-- `/agent/query`: converse with the agent (which can invoke prediction/explanation/risk/context tools).
 
 ## 🖥 Streamlit Frontend
 - Upload CSV / paste JSON → preview sequence.
 - Trigger predictions, view charts (`plot_trajectory`) and JSON results.
-- Explanation view with chat bubbles, risk meter gauge, and interactive agent chat that shows retrieved sources.
+- Explanation view with rich formatting and a risk meter gauge.
 - Responsive layout with sidebar controls and multi-column sections.
 
 ## ⚙️ Installation

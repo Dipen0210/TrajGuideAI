@@ -87,11 +87,11 @@ def build_sequences(
 
 
 def _project_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+    return Path(__file__).resolve().parents[1]
 
 
 def _default_raw_data_dir() -> Path:
-    repo_root = Path(__file__).resolve().parents[2]
+    repo_root = Path(__file__).resolve().parents[1]
     car_data_dir = repo_root / "car_data"
     if car_data_dir.exists():
         return car_data_dir

@@ -40,10 +40,3 @@ class RiskResponse(BaseModel):
     risk_factors: str
     recommendation: str
 
-
-class AgentQueryRequest(BaseModel):
-    query: str
-
-
-class AgentQueryResponse(BaseModel):
-    response: str

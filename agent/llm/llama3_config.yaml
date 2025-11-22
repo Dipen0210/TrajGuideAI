@@ -1,0 +1,6 @@
+api_base: https://api.groq.com/openai/v1/chat/completions
+api_key: ""
+model: meta-llama/Llama-3.3-70B-Instruct
+temperature: 0.2
+max_tokens: 512
+provider: huggingface

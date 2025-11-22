@@ -4,7 +4,10 @@ LangChain tool that asks Llama 3 to explain predicted trajectories.
 
 from __future__ import annotations
 
+import logging
 from typing import Dict, Optional
+
+from pydantic import BaseModel
 
 from langchain.tools import tool
 
@@ -12,6 +15,7 @@ from agent.llm.llama3_client import load_llama3
 
 
 _LLAMA3 = load_llama3()
+LOGGER = logging.getLogger(__name__)
 
 
 def _format_metadata(metadata: Optional[Dict]) -> str:
@@ -57,12 +61,12 @@ def _format_metadata(metadata: Optional[Dict]) -> str:
     return " | ".join(parts)
 
 
-@tool("explain_trajectory")
-def explain_trajectory(prediction: Dict, metadata: Optional[Dict] = None) -> str:
-    """
-    Generate a natural language explanation of the predicted motion.
-    """
+class ExplanationInput(BaseModel):
+    prediction: Dict
+    metadata: Optional[Dict] = None
 
+
+def _generate_explanation(prediction: Dict, metadata: Optional[Dict] = None) -> str:
     meta_summary = _format_metadata(metadata)
     prompt = f"""
 You are Llama 3, an automotive trajectory analyst.
@@ -75,4 +79,30 @@ Telemetry summary: {meta_summary}
 
 Respond with a concise multi-sentence explanation focused on behavior, dynamics, and context.
 """
-    return _LLAMA3.generate_text(prompt.strip())
+    try:
+        return _LLAMA3.generate_text(prompt.strip())
+    except Exception as exc:  # pylint: disable=broad-except
+        LOGGER.warning("Explanation generation failed: %s", exc)
+        return (
+            "Unable to contact the Llama 3 explanation service at the moment. "
+            "Please verify the LLM configuration or internet connectivity."
+        )
+
+
+@tool("explain_trajectory", args_schema=ExplanationInput)
+def explain_trajectory_tool(input_data: ExplanationInput) -> str:
+    """
+    LangChain tool wrapper that expects {"prediction": {...}, "metadata": {...}}.
+    """
+
+    if not input_data.prediction:
+        raise ValueError("explain_trajectory requires a prediction object.")
+    return _generate_explanation(input_data.prediction, input_data.metadata)
+
+
+def explain_trajectory(prediction: Dict, metadata: Optional[Dict] = None) -> str:
+    """
+    Convenience function for backend callers to reuse the same explanation logic.
+    """
+
+    return _generate_explanation(prediction, metadata)

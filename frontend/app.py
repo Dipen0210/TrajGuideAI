@@ -20,10 +20,32 @@ for path in {APP_DIR, ROOT_DIR}:
         sys.path.append(str(path))
 
 from components.plot_utils import plot_risk_meter, plot_trajectory  # noqa: E402
-from agent.rag.rag_chain import rag_query  # noqa: E402
 
 
 st.set_page_config(page_title="Agentic Vehicle Trajectory Prediction", layout="wide")
+
+STYLE_BLOCK = """
+<style>
+.explanation-card {
+    background: linear-gradient(135deg, #10254d, #1c3b72);
+    color: #f9fbff;
+    border-radius: 18px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    line-height: 1.6;
+    box-shadow: 0 20px 45px rgba(9, 17, 42, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.explanation-card p {
+    margin-bottom: 0.9rem;
+}
+.explanation-card p:last-child {
+    margin-bottom: 0;
+}
+</style>
+"""
+
+st.markdown(STYLE_BLOCK, unsafe_allow_html=True)
 
 DEFAULT_BASE_URL = "http://localhost:8000"
 
@@ -34,10 +56,7 @@ def ensure_state() -> None:
         "prediction": None,
         "explanation": None,
         "risk": None,
-        "chat_history": [],
         "api_base": DEFAULT_BASE_URL,
-        "agent_query": "",
-        "rag_sources": [],
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -45,20 +64,6 @@ def ensure_state() -> None:
 
 
 ensure_state()
-
-
-def render_message(role: str, content: str) -> None:
-    bg = "#f0f2f6" if role == "user" else "#e3f2fd"
-    align = "left" if role == "user" else "right"
-    st.markdown(
-        f"""
-        <div style="background-color:{bg}; padding:12px; border-radius:10px; margin:6px 0;
-        text-align:{align}; border:1px solid rgba(0,0,0,0.05);">
-        <strong>{role.title()}:</strong> {content}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
 
 def parse_csv_file(uploaded_file) -> Optional[List[Dict[str, float]]]:
@@ -93,7 +98,7 @@ def call_api(endpoint: str, payload: Dict) -> Dict:
 
 with st.sidebar:
     st.title("Agentic Trajectory System")
-    st.markdown("Graduate-level AI system combining deep learning, RAG, and agents.")
+    st.markdown("Graduate-level AI system combining deep learning with RAG-backed insights.")
     st.session_state["api_base"] = st.text_input(
         "API Base URL",
         value=st.session_state["api_base"],
@@ -102,7 +107,6 @@ with st.sidebar:
     predict_clicked = st.button("Predict Trajectory")
     explain_clicked = st.button("Explain Prediction")
     risk_clicked = st.button("Risk Assessment")
-    agent_clicked = st.button("Ask Agent")
 
 
 st.header("Trajectory Data Ingestion")
@@ -171,23 +175,6 @@ def handle_risk():
     st.session_state["risk"] = response
 
 
-def handle_agent():
-    query = st.session_state.get("agent_query", "").strip()
-    if not query:
-        st.warning("Enter a question for the agent.")
-        return
-    with st.spinner("Contacting agent..."):
-        reply = call_api("/agent/query", {"query": query})
-    st.session_state["chat_history"].append({"role": "user", "content": query})
-    st.session_state["chat_history"].append({"role": "agent", "content": reply["response"]})
-    st.session_state["rag_sources"] = []
-    try:
-        rag_result = rag_query(query)
-        st.session_state["rag_sources"] = rag_result["sources"]
-    except Exception:  # pylint: disable=broad-except
-        pass
-
-
 st.markdown("---")
 st.header("Model Operations")
 
@@ -212,7 +199,10 @@ if explain_clicked:
 
 if st.session_state.get("explanation"):
     st.subheader("Explanation")
-    render_message("agent", st.session_state["explanation"]["explanation"])
+    explanation_text = st.session_state["explanation"]["explanation"]
+    paragraphs = [para.strip() for para in explanation_text.split("\n") if para.strip()]
+    formatted = "".join(f"<p>{para}</p>" for para in paragraphs) or "<p>No explanation available.</p>"
+    st.markdown(f'<div class="explanation-card">{formatted}</div>', unsafe_allow_html=True)
 
 if risk_clicked:
     handle_risk()
@@ -224,22 +214,3 @@ if risk:
     st.write(f"**Factors:** {risk['risk_factors']}")
     st.write(f"**Recommendation:** {risk['recommendation']}")
     st.pyplot(plot_risk_meter(risk["risk_score"]))
-
-st.markdown("---")
-st.header("Agent Chat")
-st.text_area(
-    "Ask a question about this trajectory",
-    key="agent_query",
-    placeholder="e.g., What does this prediction mean for safety?",
-)
-if agent_clicked:
-    handle_agent()
-
-for message in st.session_state["chat_history"]:
-    render_message(message["role"], message["content"])
-
-if st.session_state.get("rag_sources"):
-    st.markdown("**RAG Sources**")
-    for idx, metadata in enumerate(st.session_state["rag_sources"], start=1):
-        source = metadata.get("source", "unknown")
-        st.markdown(f"- Source {idx}: `{source}`")

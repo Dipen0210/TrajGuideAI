@@ -1,33 +1,8 @@
 lsof -nP -iTCP:{portname}
 kill (PIDNo.)
 
+cd /Users/dipen/ExtraProjects/TrajAI
 source .venv/bin/activate
 uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
 
 streamlit run frontend/app.py
-
-  1.run git init (or move into the actual repo if it already exists elsewhere),
-  2. add your remote with git remote add origin <your-url>,
-  3. commit your work, git commit -m "comment"
-  4. git push origin <branch>.
-  
-
-Check which process is using a port (replace {portname} with the port number you care about).
-
-    lsof -nP -iTCP:{portname}
-  - Kill the offending PID once you know it.
-
-    kill <PID>
-  - Start the FastAPI backend.
-
-    uvicorn backend.main:app --host 127.0.0.1 --port {portname}
-  - Launch the Streamlit frontend.
-
-    streamlit run frontend/app.py
-  - Initialize and push to git (fill in your actual remote URL, commit message, and branch name).
-
-    git init
-    git remote add origin <your-url>
-    git add .
-    git commit -m "comment"
-    git push origin <branch>

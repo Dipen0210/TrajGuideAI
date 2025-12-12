@@ -17,26 +17,15 @@ class PredictRequest(BaseModel):
 
 
 class PredictResponse(BaseModel):
-    predicted_local_x: float
-    predicted_local_y: float
+    trajectory: List[Dict[str, float]]
 
 
-class ExplainRequest(BaseModel):
-    prediction: Dict[str, float]
-    metadata: Optional[Dict[str, float]] = None
 
 
-class ExplainResponse(BaseModel):
-    explanation: str
+
+class AgentRequest(BaseModel):
+    query: str
 
 
-class RiskRequest(BaseModel):
-    prediction: Dict[str, float]
-    metadata: Optional[Dict[str, float]] = None
-
-
-class RiskResponse(BaseModel):
-    risk_score: float
-    risk_factors: str
-    recommendation: str
-
+class AgentResponse(BaseModel):
+    response: str

@@ -1,0 +1,28 @@
+Traffic Safety Rules & Guidelines
+
+1. Following Distance (Space Headway):
+   - Using the "2-second rule": The minimum safe space headway is 2.0 seconds under normal conditions.
+   - At speeds > 20 m/s (~72 km/h), increase headway to 3.0 seconds.
+   - Tailgating is defined as maintaining a headway of < 1.0 second.
+   - Critical Safety Violation: Headway < 0.5 seconds at specific speed > 10 m/s.
+
+2. Braking & Deceleration:
+   - Comfortable braking is defined as deceleration < 2.0 m/s².
+   - Hard braking is defined as deceleration between 2.0 m/s² and 4.0 m/s².
+   - Emergency braking is defined as deceleration > 4.5 m/s².
+   - Frequent hard braking indicates aggressive or inattentive driving.
+
+3. Lane Keeping & Lateral Movement:
+   - A vehicle is considered "stable" if lateral velocity is < 0.2 m/s.
+   - A lane change event is characterized by significant lateral displacement (> 2.0m) and lateral velocity peaks.
+   - "Weaving" or erratic driving is indicated by frequent lateral oscillations without completing a lane change.
+
+4. Speed Limits (Contextual):
+   - Highway assumed limit: 30 m/s (~108 km/h).
+   - Urban assumed limit: 15 m/s (~54 km/h).
+   - Overspeeding is defined as exceeding the contextual limit by > 10%.
+
+5. Collision Risk (TTC):
+   - Time-To-Collision (TTC) = Space Headway / Relative Velocity.
+   - TTC < 1.5 seconds is an immediate collision warning.
+   - TTC < 4.0 seconds warrants caution.

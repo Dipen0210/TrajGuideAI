@@ -4,7 +4,7 @@ Streamlit frontend for the Agentic Vehicle Trajectory Prediction System.
 
 from __future__ import annotations
 
-import json
+
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -24,28 +24,9 @@ from components.plot_utils import plot_risk_meter, plot_trajectory  # noqa: E402
 
 st.set_page_config(page_title="Agentic Vehicle Trajectory Prediction", layout="wide")
 
-STYLE_BLOCK = """
-<style>
-.explanation-card {
-    background: linear-gradient(135deg, #10254d, #1c3b72);
-    color: #f9fbff;
-    border-radius: 18px;
-    padding: 1.5rem;
-    margin-bottom: 1rem;
-    line-height: 1.6;
-    box-shadow: 0 20px 45px rgba(9, 17, 42, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-}
-.explanation-card p {
-    margin-bottom: 0.9rem;
-}
-.explanation-card p:last-child {
-    margin-bottom: 0;
-}
-</style>
-"""
 
-st.markdown(STYLE_BLOCK, unsafe_allow_html=True)
+
+
 
 DEFAULT_BASE_URL = "http://localhost:8000"
 
@@ -54,8 +35,7 @@ def ensure_state() -> None:
     defaults = {
         "sequence": [],
         "prediction": None,
-        "explanation": None,
-        "risk": None,
+        "prediction": None,
         "api_base": DEFAULT_BASE_URL,
     }
     for key, value in defaults.items():
@@ -73,19 +53,7 @@ def parse_csv_file(uploaded_file) -> Optional[List[Dict[str, float]]]:
     return df.to_dict(orient="records")
 
 
-def parse_json_sequence(json_text: str) -> List[Dict[str, float]]:
-    data = json.loads(json_text)
-    if not isinstance(data, list):
-        raise ValueError("JSON sequence must be a list of records.")
-    parsed = []
-    for item in data:
-        if isinstance(item, dict):
-            parsed.append(item)
-        elif isinstance(item, list):
-            raise ValueError("JSON list-of-lists not supported in UI. Use list of dicts.")
-        else:
-            raise ValueError("Sequence entries must be dicts.")
-    return parsed
+
 
 
 def call_api(endpoint: str, payload: Dict) -> Dict:
@@ -105,40 +73,26 @@ with st.sidebar:
     )
     st.markdown("---")
     predict_clicked = st.button("Predict Trajectory")
-    explain_clicked = st.button("Explain Prediction")
-    risk_clicked = st.button("Risk Assessment")
+
 
 
 st.header("Trajectory Data Ingestion")
-col1, col2 = st.columns(2)
-with col1:
-    st.subheader("Upload CSV")
-    uploaded = st.file_uploader("Upload trajectory CSV", type=["csv"])
-    if uploaded is not None:
-        try:
-            sequence = parse_csv_file(uploaded)
-            st.session_state["sequence"] = sequence
-            st.success(f"Loaded {len(sequence)} records from CSV.")
-        except Exception as err:  # pylint: disable=broad-except
-            st.error(f"Failed to parse CSV: {err}")
-
-with col2:
-    st.subheader("Paste JSON Sequence")
-    json_input = st.text_area("Enter JSON list of dicts", height=200, key="json_input")
-    if st.button("Load JSON Sequence"):
-        try:
-            sequence = parse_json_sequence(json_input)
-            st.session_state["sequence"] = sequence
-            st.success(f"Loaded {len(sequence)} records from JSON.")
-        except Exception as err:  # pylint: disable=broad-except
-            st.error(f"Invalid JSON sequence: {err}")
+st.subheader("Upload CSV")
+uploaded = st.file_uploader("Upload trajectory CSV", type=["csv"])
+if uploaded is not None:
+    try:
+        sequence = parse_csv_file(uploaded)
+        st.session_state["sequence"] = sequence
+        st.success(f"Loaded {len(sequence)} records from CSV.")
+    except Exception as err:  # pylint: disable=broad-except
+        st.error(f"Failed to parse CSV: {err}")
 
 
 if st.session_state["sequence"]:
     st.markdown("### Parsed Sequence Preview")
     st.dataframe(pd.DataFrame(st.session_state["sequence"]))
 else:
-    st.info("Upload a CSV or paste JSON to get started.")
+    st.info("Upload a CSV to get started.")
 
 
 sequence = st.session_state["sequence"]
@@ -153,26 +107,7 @@ def handle_prediction():
     st.session_state["prediction"] = prediction
 
 
-def handle_explanation():
-    prediction = st.session_state.get("prediction")
-    if not prediction:
-        st.warning("Run a prediction before requesting an explanation.")
-        return
-    metadata = sequence[-1] if sequence else None
-    with st.spinner("Generating explanation..."):
-        response = call_api("/explain", {"prediction": prediction, "metadata": metadata})
-    st.session_state["explanation"] = response
 
-
-def handle_risk():
-    prediction = st.session_state.get("prediction")
-    if not prediction:
-        st.warning("Run a prediction before assessing risk.")
-        return
-    metadata = sequence[-1] if sequence else None
-    with st.spinner("Running risk assessment..."):
-        response = call_api("/risk", {"prediction": prediction, "metadata": metadata})
-    st.session_state["risk"] = response
 
 
 st.markdown("---")
@@ -183,34 +118,116 @@ if predict_clicked:
 
 prediction = st.session_state.get("prediction")
 if prediction:
-    st.subheader("Latest Prediction")
-    st.success(
-        f"Predicted Local_X: {prediction['predicted_local_x']:.4f} | "
-        f"Local_Y: {prediction['predicted_local_y']:.4f}"
+    if prediction and "trajectory" in prediction:
+        traj = prediction["trajectory"]
+        # Show stats for the first point (or last?)
+        # Let's show the first predicted point as immediate next state
+        next_pt = traj[0]
+        st.subheader("Trajectory Forecast (Next 3 Steps)")
+        st.success(
+            f"Next Step -> X: {next_pt['predicted_local_x']:.4f} | "
+            f"Y: {next_pt['predicted_local_y']:.4f}"
+        )
+        
+        col_plot, col_table = st.columns(2)
+        with col_plot:
+            st.pyplot(plot_trajectory(sequence, prediction))
+            
+        with col_table:
+             st.write("### Full Forecast Data")
+             
+             # Prepare Table Data: Last 3 history + 3 future
+             history_subset = sequence[-3:] if len(sequence) >= 3 else sequence
+             
+             table_data = []
+             for pt in history_subset:
+                 table_data.append({
+                     "Step": "History",
+                     "Local_X": pt.get("Local_X"),
+                     "Local_Y": pt.get("Local_Y")
+                 })
+                 
+             for pt in traj:
+                 table_data.append({
+                     "Step": "Prediction",
+                     "Local_X": pt.get("predicted_local_x"),
+                     "Local_Y": pt.get("predicted_local_y")
+                 })
+                 
+             st.dataframe(pd.DataFrame(table_data))
+
+
+# --- Agent Operations ---
+
+def handle_safety_audit():
+    prediction = st.session_state.get("prediction")
+    if not prediction:
+        st.warning("Run a prediction first so the agent has context.")
+        return
+    
+    # Unwrap 'trajectory' if it's inside the response dict
+    if isinstance(prediction, dict) and "trajectory" in prediction:
+        prediction = prediction["trajectory"]
+
+    # Handle multi-step prediction list
+    if isinstance(prediction, list):
+        # Format the trajectory points for the agent
+        traj_str = ", ".join([
+            f"Step {i+1}: ({pt.get('predicted_local_x', 0):.2f}, {pt.get('predicted_local_y', 0):.2f})" 
+            for i, pt in enumerate(prediction)
+        ])
+        location_desc = f"The predicted trajectory is: [{traj_str}]"
+    else:
+        # Fallback for single point (legacy) or raw dict
+        # Ensure we have the keys; if not, use a safe fallback or error
+        x = prediction.get('predicted_local_x', 0.0)
+        y = prediction.get('predicted_local_y', 0.0)
+        location_desc = f"The vehicle is at ({x:.2f}, {y:.2f})"
+
+    # Construct a context-aware query
+    query = (
+        f"Perform a SAFETY AUDIT on this trajectory. "
+        f"{location_desc}. "
+        "Follow the 5-step analysis workflow."
     )
-    col_plot, col_json = st.columns(2)
-    with col_plot:
-        st.pyplot(plot_trajectory(sequence, prediction))
-    with col_json:
-        st.json(prediction)
+    
+    with st.spinner("Agent is consulting safety rules..."):
+        response = call_api("/agent/run", {"query": query})
+    st.session_state["safety_audit"] = response["response"]
 
-if explain_clicked:
-    handle_explanation()
 
-if st.session_state.get("explanation"):
-    st.subheader("Explanation")
-    explanation_text = st.session_state["explanation"]["explanation"]
-    paragraphs = [para.strip() for para in explanation_text.split("\n") if para.strip()]
-    formatted = "".join(f"<p>{para}</p>" for para in paragraphs) or "<p>No explanation available.</p>"
-    st.markdown(f'<div class="explanation-card">{formatted}</div>', unsafe_allow_html=True)
+def handle_driver_profile():
+    if not sequence:
+        st.warning("No sequence loaded.")
+        return
 
-if risk_clicked:
-    handle_risk()
+    # Pass the raw sequence data to the agent
+    query = (
+        "Analyze the driver profile for this sequence. "
+        "Calculate aggregate metrics and classify the style."
+    )
+    with st.spinner("Agent is profiling driver behavior..."):
+        response = call_api("/agent/run", {"query": query})
+    st.session_state["driver_profile"] = response["response"]
 
-risk = st.session_state.get("risk")
-if risk:
-    st.subheader("Risk Assessment")
-    st.write(f"**Risk Score:** {risk['risk_score']:.2f}")
-    st.write(f"**Factors:** {risk['risk_factors']}")
-    st.write(f"**Recommendation:** {risk['recommendation']}")
-    st.pyplot(plot_risk_meter(risk["risk_score"]))
+
+st.markdown("---")
+st.header("Agent Analysis")
+col_safe, col_prof = st.columns(2)
+
+with col_safe:
+    if st.button("🛡️ Run Safety Auditor Agent"):
+        handle_safety_audit()
+    
+    audit_res = st.session_state.get("safety_audit")
+    if audit_res:
+        st.info(audit_res)
+
+with col_prof:
+    if st.button("🏎️ Run Driver Profiler Agent"):
+        handle_driver_profile()
+    
+    prof_res = st.session_state.get("driver_profile")
+    if prof_res:
+        st.success(prof_res)
+

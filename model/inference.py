@@ -131,7 +131,7 @@ class TrajectoryInference:
         scaler_path: Path = DEFAULT_SCALER_PATH,
         feature_columns: Optional[Sequence[str]] = None,
         window_size: int = 20,
-        hidden_size: int = 64,
+        hidden_size: int = 128,
         num_layers: int = 2,
         dropout: float = 0.0,
     ) -> None:
@@ -167,16 +167,57 @@ class TrajectoryInference:
         data_range = data_max - data_min
         return prediction * data_range + data_min
 
-    def predict(self, sequence: Iterable) -> dict:
+    def predict(self, sequence: Iterable, steps: int = 1) -> dict:
         """
-        Predict the next (Local_X, Local_Y) values for the provided sequence.
+        Predict the next `steps` (Local_X, Local_Y) values autoregressively.
         """
-        normalized_window = self.preprocess(sequence)
-        tensor_input = torch.from_numpy(normalized_window).unsqueeze(0).to(self.device)
-        outputs = predict(self.model, tensor_input, self.device)
-        normalized_prediction = outputs.squeeze(0).cpu().numpy()
-        real_values = self._inverse_transform(normalized_prediction)
-        return {
-            "predicted_local_x": float(real_values[0]),
-            "predicted_local_y": float(real_values[1]),
-        }
+        # 1. Preprocess the initial window
+        # distinct from self.preprocess because we need mutable access to the buffer
+        df = _sequence_to_dataframe(sequence, self.feature_columns)
+        if len(df) < self.window_size:
+            raise ValueError(f"Sequence length {len(df)} < window_size={self.window_size}")
+
+        current_window_df = df.tail(self.window_size).copy()
+        current_window_vals = current_window_df[self.feature_columns].values.astype(np.float32)
+        
+        # We need to perform scaling manualy inside the loop to enable autoregression
+        # But scaling the whole window every time is inefficient, yet easiest for consistency.
+        
+        predictions = []
+
+        for _ in range(steps):
+            # Scale current window
+            scaled_window = self.scaler.transform(current_window_vals)
+            
+            # Prepare tensor
+            tensor_input = torch.from_numpy(scaled_window).unsqueeze(0).to(self.device).float()
+            
+            # Predict
+            self.model.eval()
+            with torch.no_grad():
+                output = self.model(tensor_input) # shape (1, 2)
+            
+            # Inverse transform output
+            # We construct a dummy row matching scaler input shape to inverse transform correctly
+            # or we assume we can inverse transform just the target cols if we extract min/max manually.
+            # let's use the helper _inverse_transform which uses partial indexing
+            norm_pred = output.squeeze(0).cpu().numpy() # [x_norm, y_norm]
+            real_pred = self._inverse_transform(norm_pred) # [x_real, y_real]
+            
+            pred_x, pred_y = float(real_pred[0]), float(real_pred[1])
+            predictions.append({"predicted_local_x": pred_x, "predicted_local_y": pred_y})
+            
+            # Update window for next step:
+            # 1. Take the last row of the current window (unscaled)
+            new_row = current_window_vals[-1].copy()
+            
+            # 2. Update the target columns with predicted X, Y
+            # Note: This assumes other features (v, a, etc) stay constant or are ignored by the model's next step sensitivity
+            # Ideally we'd update velocity based on delta pos, but for short horizon constant state is OK.
+            new_row[self.target_indices[0]] = pred_x
+            new_row[self.target_indices[1]] = pred_y
+            
+            # 3. Slide window: drop first, append new
+            current_window_vals = np.vstack([current_window_vals[1:], new_row])
+            
+        return {"trajectory": predictions}

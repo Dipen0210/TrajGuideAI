@@ -9,19 +9,16 @@ from typing import Dict
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from agent.tools.explanation_tool import explain_trajectory
 from agent.tools.prediction_tool import _sequence_to_dataframe
-from agent.tools.risk_assessment_tool import trajectory_risk_assessment
 from model.inference import TrajectoryInference
 
 from .schemas import (
-    ExplainRequest,
-    ExplainResponse,
     PredictRequest,
     PredictResponse,
-    RiskRequest,
-    RiskResponse,
+    AgentRequest,
+    AgentResponse,
 )
+from agent.agent_pipeline import run_agent
 
 
 app = FastAPI(title="Agentic Vehicle Trajectory Prediction System")
@@ -45,26 +42,21 @@ def root() -> Dict[str, str]:
 def predict_endpoint(request: PredictRequest) -> PredictResponse:
     try:
         df = _sequence_to_dataframe(request.sequence)
-        prediction = INFERENCE.predict(df)
+        prediction = INFERENCE.predict(df, steps=3)
         return PredictResponse(**prediction)
     except Exception as exc:  # pylint: disable=broad-except
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/explain", response_model=ExplainResponse)
-def explain_endpoint(request: ExplainRequest) -> ExplainResponse:
-    try:
-        explanation = explain_trajectory(request.prediction, request.metadata)
-        return ExplainResponse(explanation=explanation)
-    except Exception as exc:  # pylint: disable=broad-except
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/risk", response_model=RiskResponse)
-def risk_endpoint(request: RiskRequest) -> RiskResponse:
+
+
+@app.post("/agent/run", response_model=AgentResponse)
+def agent_endpoint(request: AgentRequest) -> AgentResponse:
     try:
-        risk = trajectory_risk_assessment(request.prediction, request.metadata)
-        return RiskResponse(**risk)
+        response = run_agent(request.query)
+        return AgentResponse(response=response)
     except Exception as exc:  # pylint: disable=broad-except
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

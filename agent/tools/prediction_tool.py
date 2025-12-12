@@ -49,4 +49,4 @@ def predict_trajectory(input_sequence: List) -> dict:
     """
 
     df = _sequence_to_dataframe(input_sequence)
-    return _INFERENCE.predict(df)
+    return _INFERENCE.predict(df, steps=3)

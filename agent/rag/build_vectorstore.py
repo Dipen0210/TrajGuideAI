@@ -15,6 +15,7 @@ from PyPDF2 import PdfReader
 
 
 PROCESSED_DOCS_DIR = Path(__file__).resolve().parent / "processed_docs"
+KNOWLEDGE_BASE_DIR = Path(__file__).resolve().parent / "knowledge_base"
 PERSIST_DIR = Path(__file__).resolve().parent / "chroma_db"
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
@@ -45,15 +46,21 @@ def _gather_documents() -> List[Document]:
         raise FileNotFoundError(f"Processed docs directory not found: {PROCESSED_DOCS_DIR}")
 
     documents: List[Document] = []
-    for path in sorted(PROCESSED_DOCS_DIR.glob("**/*")):
-        if not path.is_file():
+    search_dirs = [PROCESSED_DOCS_DIR, KNOWLEDGE_BASE_DIR]
+    for directory in search_dirs:
+        if not directory.exists():
+            print(f"Warning: Directory not found: {directory}")
             continue
-        if path.suffix.lower() not in {".txt", ".md", ".pdf", ".csv"}:
-            continue
-        text = _load_text_from_file(path)
-        if not text.strip():
-            continue
-        documents.append(Document(page_content=text, metadata={"source": str(path.relative_to(PROCESSED_DOCS_DIR))}))
+
+        for path in sorted(directory.glob("**/*")):
+            if not path.is_file():
+                continue
+            if path.suffix.lower() not in {".txt", ".md", ".pdf", ".csv"}:
+                continue
+            text = _load_text_from_file(path)
+            if not text.strip():
+                continue
+            documents.append(Document(page_content=text, metadata={"source": str(path.relative_to(directory))}))
 
     if not documents:
         raise ValueError("No valid documents found for vector store construction.")

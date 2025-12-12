@@ -28,13 +28,30 @@ def plot_trajectory(sequence: List[Dict[str, float]], prediction: Optional[Dict[
     ax.grid(True, linestyle="--", alpha=0.4)
 
     if prediction:
-        ax.scatter(
-            prediction.get("predicted_local_x"),
-            prediction.get("predicted_local_y"),
+        # Handle both single dict (legacy) and new list format
+        if "trajectory" in prediction:
+            traj_list = prediction["trajectory"]
+            check_keys = traj_list[0] if traj_list else {}
+            pred_xs = [t["predicted_local_x"] for t in traj_list]
+            pred_ys = [t["predicted_local_y"] for t in traj_list]
+        else:
+            # Fallback for single point dict
+            pred_xs = [prediction.get("predicted_local_x")]
+            pred_ys = [prediction.get("predicted_local_y")]
+
+        ax.plot(
+            pred_xs,
+            pred_ys,
+            marker="x",
+            linestyle=":",
             color="red",
-            label="Predicted Point",
+            label="Predicted Path",
             zorder=5,
         )
+        
+        # Mark the start of prediction specially?
+        ax.scatter(pred_xs, pred_ys, color="red", s=30, zorder=6)
+        
         ax.legend()
 
     fig.tight_layout()

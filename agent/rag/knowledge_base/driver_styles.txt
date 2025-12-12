@@ -1,0 +1,31 @@
+Driver Style Profiles & Benchmarks
+
+1. The "Aggressive" Driver:
+   - Behavior: Frequently exceeds speed limits, maintains short headways (tailgating), and performs hard braking/accelerations.
+   - Metrics:
+     - Average Headway: < 1.5 seconds.
+     - Std Dev of Acceleration: > 1.5 m/s².
+     - Lane Changes: Frequent (> 2 per minute).
+     - Jerk (Rate of change of acceleration): High.
+
+2. The "Defensive" / "Cautious" Driver:
+   - Behavior: Maintains large safety cushions, accelerates smoothly, and strictly adheres to speed limits.
+   - Metrics:
+     - Average Headway: > 2.5 seconds.
+     - Std Dev of Acceleration: < 0.5 m/s².
+     - Max Deceleration: rarely exceeds 2.0 m/s² (except in emergencies).
+     - Consistent lane keeping.
+
+3. The "Inattentive" / "Distracted" Driver:
+   - Behavior: Delayed reactions, erratic lane maintenance (weaving), inconsistent speed.
+   - Metrics:
+     - Lateral velocity variance: High (drifting).
+     - Reaction Time: Slow to respond to lead vehicle braking (creating "accordion" effect).
+     - Speed Maintenance: High variance without traffic cause.
+
+4. The "Normal" / "Average" Driver:
+   - Behavior: Complies with general flow of traffic, occasional minor infractions but generally safe.
+   - Metrics:
+     - Average Headway: 1.5 - 2.5 seconds.
+     - Acceleration: Smooth transitions.
+     - Predictable maneuvering.

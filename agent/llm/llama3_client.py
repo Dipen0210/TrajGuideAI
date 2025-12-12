@@ -30,6 +30,8 @@ SYSTEM_PROMPT = "You are Llama 3 assisting with vehicle trajectory reasoning."
 load_dotenv()
 
 
+MOCK_MODE = True  # Set to True to bypass API and use simulated responses
+
 @dataclass
 class Llama3Config:
     api_base: str
@@ -44,6 +46,7 @@ class Llama3Config:
 class Llama3LLM(LLM):
     """
     LangChain-compatible wrapper around a hosted Llama 3 endpoint.
+    Supports MOCK_MODE for testing without API credits.
     """
 
     def __init__(self, config: Llama3Config) -> None:
@@ -64,12 +67,16 @@ class Llama3LLM(LLM):
             "max_tokens": self.config.max_tokens,
             "api_base": self.config.api_base,
             "provider": self.config.provider,
+            "mock_mode": MOCK_MODE,
         }
 
     def _build_hf_client(self) -> Optional[InferenceClient]:
         """
         Initialize a Hugging Face inference client when requested.
         """
+        if MOCK_MODE:
+            return None
+            
         provider = (self.config.provider or "").lower()
         base = (self.config.api_base or "").lower()
         if provider == "huggingface" or "huggingface" in base:
@@ -83,7 +90,50 @@ class Llama3LLM(LLM):
     def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
         """
         Issue a chat-completion style request to the configured endpoint.
+        If MOCK_MODE is True, returns simulated responses based on prompt keywords.
         """
+        if MOCK_MODE:
+            # --- Mock Logic for Safety Auditor ---
+            if "SAFETY AUDIT" in prompt or "safety rules" in prompt:
+                return (
+                    "Thought: The vehicle is moving at 25m/s. I need to check the safety rules.\n"
+                    "Action: consult_safety_rules\n"
+                    "Action Input: What is the safe following distance at 25m/s?\n"
+                    "Observation: The rule states a 3-second gap is needed (approx 75m).\n"
+                    "Final Answer: ⚠️ CRITICAL VIOLATION: The driver is following too closely. "
+                    "At 25m/s, a safe gap is 75m, but the current gap is much smaller. "
+                    "Risk of rear-end collision is HIGH."
+                )
+
+            # --- Mock Logic for Driver Profiler ---
+            if "driver profile" in prompt or "profile" in prompt.lower():
+                return (
+                    "Thought: I need to analyze the driving behavior.\n"
+                    "Final Answer: "
+                    "{\n"
+                    '  "style_classification": "Aggressive",\n'
+                    '  "metrics": {\n'
+                    '    "mean_velocity": 22.5,\n'
+                    '    "std_acceleration": 2.87,\n'
+                    '    "num_lane_changes": 4\n'
+                    "  },\n"
+                    '  "summary": "Driver exhibits aggressive tendencies with high acceleration variance and frequent lane changes."\n'
+                    "}"
+                )
+            
+            # --- Mock Logic for Risk Assessment ---
+            if "risk" in prompt.lower():
+                 return (
+                    "{\n"
+                    '  "risk_score": 0.85,\n'
+                    '  "risk_factors": "High speed (25m/s), Low headway (<15m)",\n'
+                    '  "recommendation": "Increase following distance immediately."\n'
+                    "}"
+                 )
+
+            # --- Default Mock Response ---
+            return "Mock Llama 3 Response: I have analyzed the trajectory and everything appears nominal."
+
         if getattr(self, "_hf_client", None) is not None:
             try:
                 return self._call_hf_client(prompt, stop)

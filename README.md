@@ -1,97 +1,86 @@
 # Agentic Vehicle Trajectory Prediction System
 
 ## 🎯 Summary
-A graduate-level AI stack that marries sequence modeling, retrieval-augmented reasoning, and interactive tooling. The system ingests thousands of vehicle telemetry CSVs, trains an LSTM for next-point trajectory prediction, layers LangChain + Llama 3 for reasoning, augments responses with RAG knowledge, and exposes everything through a FastAPI backend plus Streamlit dashboard.
+A graduate-level AI stack that marries sequence modeling, retrieval-augmented reasoning, and interactive tooling into a **Dual-Agent Architecture**. The system ingests vehicle telemetry, trains an LSTM for next-point trajectory prediction, and deploys two specialized AI agents powered by Llama 3 and RAG:
+1.  **Autonomous Safety Auditor**: Monitors real-time trajectories for safety violations and adherence to traffic rules.
+2.  **Driver Style Profiler**: Analyzes long-term driving patterns to classify styles (e.g., Aggressive, Defensive, Distracted) and provide coaching.
+
+All components are exposed through a FastAPI backend and a verified Streamlit dashboard.
 
 ## 🚀 Features
-- Deep learning trajectory model (PyTorch LSTM with configurable windows and horizons)
-- LLM-powered explanations and risk analysis for model outputs
-- Retrieval-Augmented Generation (RAG) for safety rules, weather, and contextual policies
-- FastAPI backend with production-ready endpoints
-- Streamlit UI for visualization and analytics
-- Modular Python architecture with clean separation of data, model, agent, API, and app layers
-- Industrial-grade explanations and quantified risk scores
+-   **Dual-Agent System**:
+    -   **Safety Auditor**: Determines "SAFE", "WARNING", or "CRITICAL" status with 5-step Chain-of-Thought reasoning.
+    -   **Driver Profiler**: Computes metrics (lane changes, headway, jerk) to classify behavior relative to "Golden Driver" benchmarks.
+-   **Deep Learning Core**: PyTorch LSTM model with configurable windows for precise sequence forecasting.
+-   **RAG Knowledge Base**: Vectorized traffic rules and driver style guidelines for grounded agent reasoning.
+-   **Interactive Dashboard**: Streamlit UI with real-time status badges, violation lists, and confidence visualizations.
+-   **Production API**: Dedicated endpoints (`/agent/safety-audit`, `/agent/driver-profile`) returning structured JSON reports.
 
 ## 📊 Dataset Description
-- 9,400 CSV files containing per-frame telemetry: `Local_X`, `Local_Y`, `v_Vel`, `v_Acc`, `Space_Headway`, `dis_cen`, `i_l`, `i_r`, `i_f`, `dis_l`, `dis_r`, `dis_f`.
-- Files are concatenated into one normalized DataFrame, bad/missing values are sanitized, and Min-Max scaling is applied.
-- Sliding-window generator produces tensors of shape `(window_size, num_features)` with prediction targets `(Local_X, Local_Y)` `prediction_horizon` steps ahead.
+-   **Telemetry**: 9,400+ CSV files containing `Local_X`, `Local_Y`, `v_Vel`, `v_Acc`, `Space_Headway`, and more.
+-   **Preprocessing**: Automated sanitization, missing value handling, and Min-Max scaling.
+-   **Sliding Windows**: Generators produce `(window_size, num_features)` tensors for LSTM training.
 
 ## 🧠 ML Model (LSTM)
-- Two-layer LSTM (hidden size configurable, default 64) processes each window and regresses next `(Local_X, Local_Y)`.
-- Training uses MSE loss and Adam optimizer (1e-3 lr) with GPU acceleration when available.
-- Train/validation split (80/20) tracks the best checkpoint saved under `model/checkpoints/`.
-- CLI arguments expose batch size, epochs, window size, dropout, etc.
+-   **Architecture**: Two-layer LSTM (default hidden size 64) -> Linear Regression for `(x, y)`.
+-   **Training**: MSE loss, Adam optimizer, customizable epochs/batch size via CLI.
+-   **Inference**: Sub-millisecond latency for real-time trajectory prediction.
 
-## 🤖 LLM Reasoning (Llama 3)
-- Tools:
-  - `predict_trajectory`: wraps inference pipeline.
-  - `explain_trajectory`: prompts Llama 3 for context-aware explanations.
-  - `trajectory_risk_assessment`: prompts Llama 3 for risk scoring + mitigation.
-  - `context_query`: bridges into the RAG subsystem for knowledge retrieval.
-- LangChain wrapper simplifies calling hosted Llama 3 endpoints for explanation, risk, and retrieval flows.
+## 🤖 Dual-Agent Architecture
+Powered by **Llama 3** (via HuggingFace) and **LangChain**:
 
-## 🧩 RAG System
-- Documents (`agent/rag/processed_docs/`) are chunked with RecursiveCharacterTextSplitter.
-- Embeddings: `sentence-transformers/all-MiniLM-L6-v2`.
-- Vector store: persistent Chroma instance at `agent/rag/chroma_db/`.
-- `rag_query()` fetches top-k sources and routes them through Llama 3 for grounded answers.
+### 1. Safety Auditor Agent (`/agent/safety-audit`)
+-   **Goal**: Prevent accidents by detecting unsafe maneuvers in real-time.
+-   **Tools**: `predict_trajectory`, `consult_safety_rules`.
+-   **Workflow**: Observation -> Prediction -> Rule Retrieval -> Violation Check -> Report.
+
+### 2. Driver Profiler Agent (`/agent/driver-profile`)
+-   **Goal**: Assess long-term driving habits for insurance or coaching.
+-   **Tools**: `analyze_driving_profile` (calculates volatility, lane changes, time-to-collision).
+-   **Workflow**: Metric Extraction -> Benchmark Comparison -> Classification -> Recommendation.
 
 ## 🔌 FastAPI Backend
-- `/predict`: run inference on uploaded sequences.
-- `/explain`: generate natural-language explanation for a prediction/metadata pair.
-- `/risk`: obtain risk score, factors, and recommendations.
+-   **`POST /agent/safety-audit`**: Submit trajectory -> Get status & violation report.
+-   **`POST /agent/driver-profile`**: Submit session data -> Get classification & coaching tips.
+-   **`POST /predict`**: Raw LSTM trajectory inference.
 
 ## 🖥 Streamlit Frontend
-- Upload CSV / paste JSON → preview sequence.
-- Trigger predictions, view charts (`plot_trajectory`) and JSON results.
-- Explanation view with rich formatting and a risk meter gauge.
-- Responsive layout with sidebar controls and multi-column sections.
+-   **Agent Control Center**: Specialized tabs for running Safety Audits and Driver Profiling.
+-   **Visualizations**:
+    -   Trajectory plots.
+    -   Status badges (✅ SAFE, 🚨 CRITICAL).
+    -   Driver style confidence bars.
+    -   Expandable detailed LLM reports.
 
 ## ⚙️ Installation
-1. **Python**: 3.10+ recommended.
-2. **Create environment**
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
-   ```
-3. **Configure Llama 3 client**: fill `agent/llm/llama3_config.yaml` with `api_base`, `api_key`, `model`.
-4. **Prepare data**: place raw CSVs under `data/raw/` and run the preprocessing script via `TrajectoryPreprocessor`.
-
+1.  **Python**: 3.10+ recommended.
+2.  **Create environment**:
+    ```bash
+    python -m venv .venv
+    source .venv/bin/activate
+    pip install -r requirements.txt
+    ```
+3.  **Configure API Keys**:
+    -   Create a `.env` file or export variables:
+        ```bash
+        export HF_API_KEY="your_huggingface_token"
+        export HF_MODEL_ID="meta-llama/Llama-3.3-70B-Instruct"
+        ```
+        
 ## ▶️ Run Instructions
-1. **Build vector store**
-   ```bash
-   python agent/rag/build_vectorstore.py
-   ```
-2. **Train LSTM**
-   ```bash
-   python model/train.py --epochs 20 --batch_size 64
-   ```
-3. **Run API**
-   ```bash
-   uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
-   ```
-4. **Launch Streamlit**
-   ```bash
-   streamlit run frontend/app.py
-   ```
-
-## 📚 Documentation
-- Detailed markdown guides live under `/docs`. See:
-  - `docs/overview.md`
-  - `docs/architecture.md`
-  - `docs/data_preprocessing.md`
-  - `docs/model_training.md`
-  - `docs/agent_system.md`
-  - `docs/rag_system.md`
-  - `docs/api_docs.md`
-  - `docs/frontend_guide.md`
-  - `docs/future_work.md`
+1.  **Start Backend API**:
+    ```bash
+    uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+    ```
+2.  **Launch Dashboard**:
+    ```bash
+    streamlit run frontend/app.py
+    ```
+3.  **Verify Agents**:
+    -   Upload a sample CSV in the UI.
+    -   Click **"Run Safety Audit"** or **"Analyze Driver Style"**.
 
 ## 🌟 Future Work
-- Multi-agent prediction and collaborative planning across multiple vehicles.
-- Upgrade to Transformer-based sequence models or diffusion trajectory predictors.
-- Integration with CARLA or other simulators for closed-loop testing.
-- Multi-modal sensor fusion (LiDAR, camera, V2X) to enrich context.
-- Edge deployment on vehicle-grade hardware with pruning/quantization.
+-   **Multi-Vehicle Coordination**: Agents negotiating right-of-way.
+-   **Vision Integration**: Adding camera input to the Safety Auditor.
+-   **Reinforcement Learning**: Using Driver Profiler feedback to train self-driving policies.

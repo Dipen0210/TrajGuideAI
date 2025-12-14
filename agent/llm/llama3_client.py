@@ -30,7 +30,7 @@ SYSTEM_PROMPT = "You are Llama 3 assisting with vehicle trajectory reasoning."
 load_dotenv()
 
 
-MOCK_MODE = True  # Set to True to bypass API and use simulated responses
+MOCK_MODE = False  # Set to True to bypass API and use simulated responses
 
 @dataclass
 class Llama3Config:

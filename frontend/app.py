@@ -160,74 +160,120 @@ if prediction:
 # --- Agent Operations ---
 
 def handle_safety_audit():
-    prediction = st.session_state.get("prediction")
-    if not prediction:
-        st.warning("Run a prediction first so the agent has context.")
+    """Call the dedicated Safety Auditor endpoint."""
+    sequence = st.session_state.get("sequence", [])
+    if not sequence:
+        st.warning("Please load a trajectory sequence first.")
         return
     
-    # Unwrap 'trajectory' if it's inside the response dict
-    if isinstance(prediction, dict) and "trajectory" in prediction:
-        prediction = prediction["trajectory"]
-
-    # Handle multi-step prediction list
-    if isinstance(prediction, list):
-        # Format the trajectory points for the agent
-        traj_str = ", ".join([
-            f"Step {i+1}: ({pt.get('predicted_local_x', 0):.2f}, {pt.get('predicted_local_y', 0):.2f})" 
-            for i, pt in enumerate(prediction)
-        ])
-        location_desc = f"The predicted trajectory is: [{traj_str}]"
-    else:
-        # Fallback for single point (legacy) or raw dict
-        # Ensure we have the keys; if not, use a safe fallback or error
-        x = prediction.get('predicted_local_x', 0.0)
-        y = prediction.get('predicted_local_y', 0.0)
-        location_desc = f"The vehicle is at ({x:.2f}, {y:.2f})"
-
-    # Construct a context-aware query
-    query = (
-        f"Perform a SAFETY AUDIT on this trajectory. "
-        f"{location_desc}. "
-        "Follow the 5-step analysis workflow."
-    )
-    
-    with st.spinner("Agent is consulting safety rules..."):
-        response = call_api("/agent/run", {"query": query})
-    st.session_state["safety_audit"] = response["response"]
+    with st.spinner("🏆 Safety Auditor Agent is analyzing trajectory..."):
+        try:
+            response = call_api("/agent/safety-audit", {"sequence": sequence})
+            st.session_state["safety_audit"] = response
+        except Exception as e:
+            st.error(f"Safety audit failed: {e}")
+            return
 
 
 def handle_driver_profile():
+    """Call the dedicated Driver Profiler endpoint."""
+    sequence = st.session_state.get("sequence", [])
     if not sequence:
-        st.warning("No sequence loaded.")
+        st.warning("Please load a trajectory sequence first.")
         return
-
-    # Pass the raw sequence data to the agent
-    query = (
-        "Analyze the driver profile for this sequence. "
-        "Calculate aggregate metrics and classify the style."
-    )
-    with st.spinner("Agent is profiling driver behavior..."):
-        response = call_api("/agent/run", {"query": query})
-    st.session_state["driver_profile"] = response["response"]
+    
+    with st.spinner("🏎️ Driver Profiler Agent is classifying behavior..."):
+        try:
+            response = call_api("/agent/driver-profile", {"sequence": sequence})
+            st.session_state["driver_profile"] = response
+        except Exception as e:
+            st.error(f"Driver profiling failed: {e}")
+            return
 
 
 st.markdown("---")
-st.header("Agent Analysis")
+st.header("🤖 Agent Analysis")
+
 col_safe, col_prof = st.columns(2)
 
 with col_safe:
-    if st.button("🛡️ Run Safety Auditor Agent"):
+    st.subheader("🏆 Safety Auditor")
+    if st.button("Run Safety Audit", key="safety_btn"):
         handle_safety_audit()
     
     audit_res = st.session_state.get("safety_audit")
     if audit_res:
-        st.info(audit_res)
+        # Display structured result
+        status = audit_res.get("status", "UNKNOWN")
+        violations = audit_res.get("violations", [])
+        report = audit_res.get("report", "")
+        
+        # Status badge
+        if status == "SAFE":
+            st.success(f"✅ Status: **{status}**")
+        elif status == "WARNING":
+            st.warning(f"⚠️ Status: **{status}**")
+        elif status == "CRITICAL":
+            st.error(f"🚨 Status: **{status}**")
+        else:
+            st.info(f"Status: {status}")
+        
+        # Violations
+        if violations:
+            st.markdown("**Detected Violations:**")
+            for v in violations:
+                st.markdown(f"- ❌ {v}")
+        
+        # Full report in expander
+        with st.expander("View Full Report"):
+            st.markdown(report)
 
 with col_prof:
-    if st.button("🏎️ Run Driver Profiler Agent"):
+    st.subheader("🏎️ Driver Profiler")
+    if st.button("Analyze Driver Style", key="profile_btn"):
         handle_driver_profile()
     
     prof_res = st.session_state.get("driver_profile")
     if prof_res:
-        st.success(prof_res)
+        # Display structured result
+        classification = prof_res.get("classification", "Unknown")
+        confidence = prof_res.get("confidence", 0)
+        recommendations = prof_res.get("recommendations", [])
+        report = prof_res.get("report", "")
+        
+        # Classification with color
+        style_colors = {
+            "Aggressive": "🔴",
+            "Defensive": "🟢",
+            "Distracted": "🟡",
+            "Normal": "🔵",
+        }
+        emoji = style_colors.get(classification, "⚪")
+        st.info(f"{emoji} Classification: **{classification}** ({confidence}% confidence)")
+        
+        # Progress bar for confidence
+        st.progress(confidence / 100)
+        
+        # Recommendations
+        if recommendations:
+            st.markdown("**Recommendations:**")
+            for rec in recommendations[:3]:  # Show top 3
+                st.markdown(f"- 💡 {rec}")
+        
+        # Full report in expander
+        with st.expander("View Full Report"):
+            st.markdown(report)
+
+
+# Footer
+st.markdown("---")
+st.markdown(
+    """
+    <div style='text-align: center; color: gray;'>
+        <small>Agentic Vehicle Trajectory Prediction System v2.0 | 
+        Powered by LSTM + Llama 3 + RAG</small>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 

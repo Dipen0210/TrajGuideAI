@@ -29,3 +29,27 @@ Driver Style Profiles & Benchmarks
      - Average Headway: 1.5 - 2.5 seconds.
      - Acceleration: Smooth transitions.
      - Predictable maneuvering.
+
+5. The "Golden Driver" Standard (Ideal Benchmark):
+   - This is the IDEAL driver profile that all drivers should aspire to.
+   - Metrics:
+     - Average Headway: >= 2.5 seconds (always maintains safe distance).
+     - Std Dev of Acceleration: 0.3 - 0.5 m/s² (very smooth driving).
+     - Max Deceleration: > -2.5 m/s² (rarely needs hard braking).
+     - Average Jerk: < 0.5 m/s³ (minimal discomfort).
+     - Lane Changes: Only when necessary, with proper signaling time (> 3 seconds).
+     - Speed Compliance: Always within 5% of speed limit.
+   - Characteristics:
+     - Anticipates traffic flow and adjusts proactively.
+     - Maintains consistent following distance regardless of traffic density.
+     - Uses mirrors frequently (cannot be measured from telemetry, but reflected in smooth lane changes).
+     - Brakes gradually and early rather than late and hard.
+
+6. Classification Thresholds Summary:
+   | Style       | Std Accel (m/s²) | Max Brake (m/s²) | Avg Headway (s) | Lane Changes/min |
+   |-------------|------------------|------------------|-----------------|------------------|
+   | Aggressive  | > 1.5            | < -4.0           | < 1.5           | > 2              |
+   | Defensive   | < 0.5            | > -2.0           | > 2.5           | < 0.5            |
+   | Distracted  | High variance    | Delayed response | Inconsistent    | Erratic pattern  |
+   | Normal      | 0.5 - 1.5        | -2.0 to -4.0     | 1.5 - 2.5       | 0.5 - 2          |
+   | Golden      | 0.3 - 0.5        | > -2.5           | > 2.5           | As needed        |

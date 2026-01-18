@@ -35,7 +35,7 @@ TrajAI is a graduate-level AI system that combines deep learning sequence modeli
 
 ### 🧠 Deep Learning Core
 - **LSTM Model**: Two-layer LSTM architecture for precise sequence forecasting
-- **12-Feature Prediction**: Predicts position, velocity, acceleration, and lane metrics
+- **4-Feature Prediction**: Predicts position, velocity, acceleration, and lane metrics
 - **Sub-millisecond Inference**: Optimized for real-time applications
 
 ### 🤖 AI Agents (Powered by Llama 3.3 70B)

@@ -56,6 +56,15 @@ TrajAI is a graduate-level AI system that combines deep learning sequence modeli
 
 ---
 
+<img width="1257" height="605" alt="Screenshot 2026-01-17 at 8 14 06 PM" src="https://github.com/user-attachments/assets/d993e5bb-cfa3-4513-ab89-fae5c0315fc7" />
+<img width="1223" height="668" alt="Screenshot 2026-01-17 at 8 14 23 PM" src="https://github.com/user-attachments/assets/6b9b950b-65e7-4db8-96c2-e125da13691a" />
+<img width="1252" height="666" alt="Screenshot 2026-01-17 at 8 14 49 PM" src="https://github.com/user-attachments/assets/b2083dcb-27a2-4a2f-a339-17dbc5ea13bf" />
+<img width="608" height="622" alt="Screenshot 2026-01-17 at 8 15 13 PM" src="https://github.com/user-attachments/assets/121d0eda-759b-4e20-b695-a34ac5622fd2" />
+
+
+
+---
+
 ## 🏗️ Architecture
 
 ```

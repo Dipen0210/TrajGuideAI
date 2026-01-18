@@ -16,13 +16,22 @@ from __future__ import annotations
 
 from typing import List, Dict, Any, Optional
 
-from langchain.agents import initialize_agent
-from langchain.memory import ConversationBufferMemory
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import Runnable
+from pydantic import BaseModel, Field
 
 from agent.llm.llama3_client import load_llama3
 from agent.tools.profile_tool import analyze_driving_profile
 from agent.tools.safety_rules_tool import consult_safety_rules
 
+
+DRIVER_CHAIN_STEPS = [
+    "ANALYZE: Run analyze_driving_profile to compute metrics (speed, acceleration variance, braking, jerk).",
+    "RETRIEVE: Use consult_safety_rules to pull driver-style benchmarks and safety thresholds.",
+    "CLASSIFY: Map metrics to Aggressive/Defensive/Distracted/Normal with a confidence score.",
+    "EXPLAIN: Provide structured report and recommendations.",
+    "NOTE: Do NOT generate new trajectory predictions; use the supplied LSTM output context (speed trend, accel) to support your analysis.",
+]
 
 DRIVER_PROFILER_PREFIX = """You are an expert Driver Behavior Analyst specializing in driving style classification.
 Your mission is to analyze driving patterns and provide actionable feedback to improve safety.
@@ -85,6 +94,8 @@ Risk Assessment:
 
 IMPORTANT: Always use BOTH tools before making a classification.
 Be constructive in recommendations - the goal is to help drivers improve.
+
+You will be given a precomputed trajectory prediction from the LSTM which contains predicted velocity and acceleration. Use this to see if the driver is trending towards safer or more dangerous behavior in the immediate future.
 """
 
 
@@ -96,6 +107,13 @@ def _build_profiler_tools() -> list:
     ]
 
 
+class DriverProfileSchema(BaseModel):
+    classification: str = Field(description="Driver style label: Aggressive, Defensive, Distracted, or Normal")
+    confidence: int = Field(description="Confidence 0-100")
+    recommendations: List[str] = Field(default_factory=list, description="Top improvement recommendations")
+    report: str = Field(description="Full profile report")
+
+
 class DriverProfilerAgent:
     """
     Dedicated agent for analyzing and classifying driver behavior.
@@ -103,23 +121,27 @@ class DriverProfilerAgent:
     
     def __init__(self):
         self.llm = load_llama3()
-        self.memory = ConversationBufferMemory(
-            memory_key="chat_history",
-            return_messages=True
-        )
-        self.tools = _build_profiler_tools()
-        
-        self.agent = initialize_agent(
-            tools=self.tools,
-            llm=self.llm,
-            agent="structured-chat-zero-shot-react-description",
-            verbose=True,
-            memory=self.memory,
-            handle_parsing_errors=True,
-            agent_kwargs={
-                "prefix": DRIVER_PROFILER_PREFIX,
-            },
-        )
+        self.prompt = ChatPromptTemplate.from_messages([
+            ("system", DRIVER_PROFILER_PREFIX + """
+
+IMPORTANT: You MUST respond with a valid JSON object containing exactly these fields:
+{{
+    "classification": "Aggressive" or "Defensive" or "Distracted" or "Normal",
+    "confidence": 0-100 (integer),
+    "recommendations": ["List of improvement suggestions"],
+    "report": "Your full profile report here"
+}}
+
+Do NOT include any text before or after the JSON object. Only output valid JSON."""),
+            (
+                "human",
+                "Metrics summary:\n{metrics_summary}\n\n"
+                "Benchmarks:\n{benchmark_context}\n\n"
+                "Supplied trajectory prediction (context):\n{prediction_summary}\n\n"
+                "Raw data preview:\n{raw_data}\n\n"
+                "Follow the 4-step workflow and provide classification, confidence, and recommendations as JSON.",
+            ),
+        ])
     
     def profile(
         self, 
@@ -127,6 +149,7 @@ class DriverProfilerAgent:
         acceleration_series: List[float],
         lane_changes: Optional[int] = None,
         headway_series: Optional[List[float]] = None,
+        predicted_trajectory: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """
         Analyze driving behavior and classify the driver style.
@@ -136,6 +159,7 @@ class DriverProfilerAgent:
             acceleration_series: List of acceleration values (m/s²)
             lane_changes: Optional count of lane changes during the session
             headway_series: Optional list of headway values
+            predicted_trajectory: Optional precomputed LSTM predictions for context (no re-prediction)
         
         Returns:
             Dictionary containing:
@@ -144,48 +168,84 @@ class DriverProfilerAgent:
                 - report: Full profile report
                 - recommendations: List of improvement suggestions
         """
-        # Build context string
-        context_parts = [
-            f"Velocity series ({len(velocity_series)} samples): min={min(velocity_series):.2f}, max={max(velocity_series):.2f}, mean={sum(velocity_series)/len(velocity_series):.2f} m/s",
-            f"Acceleration series ({len(acceleration_series)} samples): min={min(acceleration_series):.2f}, max={max(acceleration_series):.2f}",
-        ]
+        metrics = analyze_driving_profile.invoke({
+            "velocity_series": velocity_series,
+            "acceleration_series": acceleration_series,
+            "lane_changes": lane_changes or 0,
+            "headway_series": headway_series or [],
+        })
+        metrics_summary = str(metrics)
         
-        if lane_changes is not None:
-            context_parts.append(f"Lane changes detected: {lane_changes}")
+        benchmark_resp = consult_safety_rules.invoke({
+            "query": "Provide driver style benchmarks for aggressive, defensive, distracted, and normal driving."
+        })
+        benchmark_context = (
+            benchmark_resp.get("answer") if isinstance(benchmark_resp, dict) else str(benchmark_resp)
+        )
         
-        if headway_series:
-            context_parts.append(
-                f"Headway series: min={min(headway_series):.2f}m, avg={sum(headway_series)/len(headway_series):.2f}m"
-            )
+        raw_data_preview = (
+            f"- Velocities: {velocity_series[:10]}... (showing first 10)\n"
+            f"- Accelerations: {acceleration_series[:10]}... (showing first 10)"
+        )
         
-        context = "\n".join(context_parts)
+        # Format prompt
+        messages = self.prompt.format_messages(
+            metrics_summary=metrics_summary,
+            benchmark_context=benchmark_context,
+            prediction_summary=self._format_prediction_summary(predicted_trajectory),
+            raw_data=raw_data_preview,
+        )
         
-        query = f"""Perform a DRIVER PROFILE analysis on the following driving session data:
-
-{context}
-
-Raw Data:
-- Velocities: {velocity_series[:10]}... (showing first 10)
-- Accelerations: {acceleration_series[:10]}... (showing first 10)
-
-Follow the 4-step workflow to:
-1. ANALYZE the driving metrics
-2. RETRIEVE the driver style benchmarks
-3. CLASSIFY the driving style
-4. EXPLAIN with recommendations
-"""
+        # Invoke LLM
+        response = self.llm.invoke(messages)
         
-        result = self.agent.invoke({"input": query})
-        output = result["output"]
+        # Parse response - handle both string and AIMessage responses
+        if hasattr(response, 'content'):
+            response_text = response.content
+        else:
+            response_text = str(response)
         
-        return self._parse_profile_result(output)
+        # Try to extract JSON from the response
+        result = self._parse_json_response(response_text)
+        
+        result["recommendations"] = (result.get("recommendations") or [])[:5]
+        result["chain_steps"] = DRIVER_CHAIN_STEPS
+        return result
     
-    def profile_from_sequence(self, vehicle_sequence: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _parse_json_response(self, response_text: str) -> Dict[str, Any]:
+        """Parse JSON from LLM response, with fallback handling."""
+        import json
+        import re
+        
+        # Try to find JSON in the response
+        try:
+            # First try to parse the whole response as JSON
+            return json.loads(response_text)
+        except json.JSONDecodeError:
+            pass
+        
+        # Try to find JSON object in the response
+        json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response_text, re.DOTALL)
+        if json_match:
+            try:
+                return json.loads(json_match.group())
+            except json.JSONDecodeError:
+                pass
+        
+        # Fallback: use the existing parsing method
+        return self._parse_profile_result(response_text)
+    
+    def profile_from_sequence(
+        self,
+        vehicle_sequence: List[Dict[str, Any]],
+        predicted_trajectory: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
         """
         Profile driver from a full vehicle state sequence.
         
         Args:
             vehicle_sequence: List of vehicle state dictionaries
+            predicted_trajectory: Optional precomputed prediction for context
         
         Returns:
             Driver profile result dictionary
@@ -202,14 +262,8 @@ Follow the 4-step workflow to:
             acceleration_series=accelerations,
             lane_changes=lane_changes,
             headway_series=headways,
+            predicted_trajectory=predicted_trajectory,
         )
-    
-    def profile_raw(self, query: str) -> str:
-        """
-        Run a raw natural language profiling query through the agent.
-        """
-        result = self.agent.invoke({"input": query})
-        return result["output"]
     
     def _count_lane_changes(self, sequence: List[Dict[str, Any]]) -> int:
         """Count lane change events from lane indicators."""
@@ -231,19 +285,48 @@ Follow the 4-step workflow to:
     
     def _parse_profile_result(self, output: str) -> Dict[str, Any]:
         """Parse agent output into structured result."""
+        import re
         output_lower = output.lower()
         
-        # Determine classification
-        classification = "Normal"
-        if "aggressive" in output_lower:
-            classification = "Aggressive"
-        elif "defensive" in output_lower or "cautious" in output_lower:
-            classification = "Defensive"
-        elif "distracted" in output_lower or "inattentive" in output_lower:
-            classification = "Distracted"
+        # Look for explicit classification patterns first
+        # Pattern: "Classification: Aggressive" or "classified as: Normal"
+        classification_patterns = [
+            r'classification[:\s]+["\']*(\w+)',
+            r'classified\s+as[:\s]+["\']*(\w+)',
+            r'driver\s+(?:is|style)[:\s]+["\']*(\w+)',
+            r'profile[:\s]+["\']*(\w+)',
+        ]
+        
+        classification = None
+        for pattern in classification_patterns:
+            match = re.search(pattern, output_lower)
+            if match:
+                style = match.group(1).lower()
+                if "aggress" in style:
+                    classification = "Aggressive"
+                elif "defens" in style or "cautious" in style:
+                    classification = "Defensive"
+                elif "distract" in style or "inattent" in style:
+                    classification = "Distracted"
+                elif "normal" in style:
+                    classification = "Normal"
+                if classification:
+                    break
+        
+        # If no explicit pattern found, use metric-based heuristics
+        if not classification:
+            # Check for metric indicators in the text
+            # High std acceleration = aggressive, low = defensive
+            if any(phrase in output_lower for phrase in ["high acceleration variability", "hard braking", "aggressive acceleration", "erratic"]):
+                classification = "Aggressive"
+            elif any(phrase in output_lower for phrase in ["smooth", "gentle", "careful", "safe following", "low variability"]):
+                classification = "Defensive"
+            elif any(phrase in output_lower for phrase in ["inconsistent", "delayed reaction", "distracted"]):
+                classification = "Distracted"
+            else:
+                classification = "Normal"  # Default to Normal, not Aggressive
         
         # Extract confidence (look for percentage)
-        import re
         confidence_match = re.search(r'(\d+)\s*%', output)
         confidence = int(confidence_match.group(1)) if confidence_match else 70
         
@@ -264,11 +347,31 @@ Follow the 4-step workflow to:
             "confidence": confidence,
             "report": output,
             "recommendations": recommendations[:5],  # Limit to 5
+            "chain_steps": DRIVER_CHAIN_STEPS,
         }
     
     def clear_memory(self):
         """Clear conversation history."""
-        self.memory.clear()
+        return None
+
+    @staticmethod
+    def _format_prediction_summary(predicted: Optional[List[Dict[str, Any]]]) -> str:
+        """Summarize supplied predicted trajectory for context."""
+        if not predicted:
+            return "No trajectory prediction provided."
+        
+        xs = [p.get("Local_X", p.get("predicted_local_x", 0)) for p in predicted]
+        ys = [p.get("Local_Y", p.get("predicted_local_y", 0)) for p in predicted]
+        vels = [p.get("v_Vel", 0) for p in predicted]
+        accs = [p.get("v_Acc", 0) for p in predicted]
+
+        return (
+            f"- Horizon: {len(predicted)} steps\n"
+            f"- Position: X({min(xs):.1f}->{max(xs):.1f}), Y({min(ys):.1f}->{max(ys):.1f})\n"
+            f"- Predicted Velocity: {min(vels):.2f} -> {max(vels):.2f} m/s\n"
+            f"- Predicted Accel: {min(accs):.2f} -> {max(accs):.2f} m/s²\n"
+            f"- Raw Data: {predicted}"
+        )
 
 
 # Module-level singleton for convenience
@@ -288,6 +391,7 @@ def run_driver_profile(
     acceleration_series: List[float],
     lane_changes: Optional[int] = None,
     headway_series: Optional[List[float]] = None,
+    predicted_trajectory: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
     Convenience function to run driver profiling.
@@ -306,10 +410,14 @@ def run_driver_profile(
         acceleration_series=acceleration_series,
         lane_changes=lane_changes,
         headway_series=headway_series,
+        predicted_trajectory=predicted_trajectory,
     )
 
 
-def run_driver_profile_from_sequence(vehicle_sequence: List[Dict[str, Any]]) -> Dict[str, Any]:
+def run_driver_profile_from_sequence(
+    vehicle_sequence: List[Dict[str, Any]],
+    predicted_trajectory: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
     """
     Convenience function to profile from a full vehicle sequence.
     
@@ -319,7 +427,10 @@ def run_driver_profile_from_sequence(vehicle_sequence: List[Dict[str, Any]]) -> 
     Returns:
         Driver profile result dictionary
     """
-    return get_driver_profiler().profile_from_sequence(vehicle_sequence)
+    return get_driver_profiler().profile_from_sequence(
+        vehicle_sequence,
+        predicted_trajectory=predicted_trajectory,
+    )
 
 
 if __name__ == "__main__":

@@ -36,6 +36,10 @@ class SafetyAuditRequest(BaseModel):
         ..., 
         description="Vehicle state sequence with keys: Local_X, Local_Y, v_Vel, v_Acc, Space_Headway, etc."
     )
+    predicted_trajectory: Optional[List[Dict[str, float]]] = Field(
+        None,
+        description="Precomputed LSTM trajectory prediction (full state including velocity, acceleration, etc.).",
+    )
 
 
 class SafetyAuditResponse(BaseModel):
@@ -70,6 +74,10 @@ class DriverProfileRequest(BaseModel):
     headway_series: Optional[List[float]] = Field(
         None,
         description="List of headway/following distance values (m)."
+    )
+    predicted_trajectory: Optional[List[Dict[str, float]]] = Field(
+        None,
+        description="Precomputed LSTM trajectory prediction (full state including velocity, acceleration, etc.).",
     )
 
 

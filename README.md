@@ -1,86 +1,266 @@
-# Agentic Vehicle Trajectory Prediction System
+# 🚗 TrajAI - Agentic Vehicle Trajectory Prediction System
 
-## 🎯 Summary
-A graduate-level AI stack that marries sequence modeling, retrieval-augmented reasoning, and interactive tooling into a **Dual-Agent Architecture**. The system ingests vehicle telemetry, trains an LSTM for next-point trajectory prediction, and deploys two specialized AI agents powered by Llama 3 and RAG:
-1.  **Autonomous Safety Auditor**: Monitors real-time trajectories for safety violations and adherence to traffic rules.
-2.  **Driver Style Profiler**: Analyzes long-term driving patterns to classify styles (e.g., Aggressive, Defensive, Distracted) and provide coaching.
+<div align="center">
 
-All components are exposed through a FastAPI backend and a verified Streamlit dashboard.
+![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)
+![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-red.svg)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)
+![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-orange.svg)
+![LangChain](https://img.shields.io/badge/LangChain-0.1+-purple.svg)
+![Llama](https://img.shields.io/badge/Llama_3.3-70B-yellow.svg)
 
-## 🚀 Features
--   **Dual-Agent System**:
-    -   **Safety Auditor**: Determines "SAFE", "WARNING", or "CRITICAL" status with 5-step Chain-of-Thought reasoning.
-    -   **Driver Profiler**: Computes metrics (lane changes, headway, jerk) to classify behavior relative to "Golden Driver" benchmarks.
--   **Deep Learning Core**: PyTorch LSTM model with configurable windows for precise sequence forecasting.
--   **RAG Knowledge Base**: Vectorized traffic rules and driver style guidelines for grounded agent reasoning.
--   **Interactive Dashboard**: Streamlit UI with real-time status badges, violation lists, and confidence visualizations.
--   **Production API**: Dedicated endpoints (`/agent/safety-audit`, `/agent/driver-profile`) returning structured JSON reports.
+**AI-powered vehicle trajectory prediction with real-time safety analysis and driver profiling**
 
-## 📊 Dataset Description
--   **Telemetry**: 9,400+ CSV files containing `Local_X`, `Local_Y`, `v_Vel`, `v_Acc`, `Space_Headway`, and more.
--   **Preprocessing**: Automated sanitization, missing value handling, and Min-Max scaling.
--   **Sliding Windows**: Generators produce `(window_size, num_features)` tensors for LSTM training.
+[Features](#-features) • [Architecture](#-architecture) • [Installation](#️-installation) • [Usage](#-usage) • [API Reference](#-api-reference)
 
-## 🧠 ML Model (LSTM)
--   **Architecture**: Two-layer LSTM (default hidden size 64) -> Linear Regression for `(x, y)`.
--   **Training**: MSE loss, Adam optimizer, customizable epochs/batch size via CLI.
--   **Inference**: Sub-millisecond latency for real-time trajectory prediction.
+</div>
 
-## 🤖 Dual-Agent Architecture
-Powered by **Llama 3** (via HuggingFace) and **LangChain**:
+---
 
-### 1. Safety Auditor Agent (`/agent/safety-audit`)
--   **Goal**: Prevent accidents by detecting unsafe maneuvers in real-time.
--   **Tools**: `predict_trajectory`, `consult_safety_rules`.
--   **Workflow**: Observation -> Prediction -> Rule Retrieval -> Violation Check -> Report.
+## 🎯 Overview
 
-### 2. Driver Profiler Agent (`/agent/driver-profile`)
--   **Goal**: Assess long-term driving habits for insurance or coaching.
--   **Tools**: `analyze_driving_profile` (calculates volatility, lane changes, time-to-collision).
--   **Workflow**: Metric Extraction -> Benchmark Comparison -> Classification -> Recommendation.
+TrajAI is a graduate-level AI system that combines deep learning sequence modeling with LLM-powered reasoning agents. The system ingests vehicle telemetry, predicts future trajectories using an LSTM neural network, and deploys two specialized AI agents for safety and behavior analysis.
 
-## 🔌 FastAPI Backend
--   **`POST /agent/safety-audit`**: Submit trajectory -> Get status & violation report.
--   **`POST /agent/driver-profile`**: Submit session data -> Get classification & coaching tips.
--   **`POST /predict`**: Raw LSTM trajectory inference.
+### Dual-Agent Architecture
 
-## 🖥 Streamlit Frontend
--   **Agent Control Center**: Specialized tabs for running Safety Audits and Driver Profiling.
--   **Visualizations**:
-    -   Trajectory plots.
-    -   Status badges (✅ SAFE, 🚨 CRITICAL).
-    -   Driver style confidence bars.
-    -   Expandable detailed LLM reports.
+| Agent | Purpose | Output |
+|-------|---------|--------|
+| **🛡️ Safety Auditor** | Real-time trajectory monitoring | SAFE / WARNING / CRITICAL status |
+| **🏎️ Driver Profiler** | Behavioral pattern analysis | Driver classification + recommendations |
+
+---
+
+## ✨ Features
+
+### 🧠 Deep Learning Core
+- **LSTM Model**: Two-layer LSTM architecture for precise sequence forecasting
+- **12-Feature Prediction**: Predicts position, velocity, acceleration, and lane metrics
+- **Sub-millisecond Inference**: Optimized for real-time applications
+
+### 🤖 AI Agents (Powered by Llama 3.3 70B)
+- **Chain-of-Thought Reasoning**: 5-step structured analysis workflow
+- **Safety Rule Knowledge Base**: Embedded traffic rules and thresholds
+- **Natural Language Reports**: Detailed explanations with actionable insights
+
+### 🖥️ Modern Dashboard
+- **Dark Theme UI**: Sleek, modern interface with gradient accents
+- **Real-time Visualization**: Interactive trajectory plots
+- **Status Badges**: Visual indicators for safety status
+- **Confidence Metrics**: Progress bars and classification displays
+
+### 🔌 Production API
+- **RESTful Endpoints**: Clean JSON request/response format
+- **Structured Outputs**: Consistent schema for all agent responses
+- **Error Handling**: Graceful degradation with helpful messages
+
+---
+
+## 🏗️ Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    TrajAI System Architecture                    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌──────────────┐     ┌──────────────┐     ┌──────────────────┐ │
+│  │   Streamlit  │────▶│   FastAPI    │────▶│  LSTM Model      │ │
+│  │   Frontend   │     │   Backend    │     │  (Trajectory)    │ │
+│  └──────────────┘     └──────┬───────┘     └──────────────────┘ │
+│                              │                                   │
+│                              ▼                                   │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │                    AI Agent Layer                          │  │
+│  │  ┌─────────────────┐       ┌─────────────────────────┐    │  │
+│  │  │  Safety Auditor │       │    Driver Profiler      │    │  │
+│  │  │  - Rule Check   │       │  - Behavior Analysis    │    │  │
+│  │  │  - Violation    │       │  - Style Classification │    │  │
+│  │  │    Detection    │       │  - Recommendations      │    │  │
+│  │  └────────┬────────┘       └────────────┬────────────┘    │  │
+│  │           │                             │                  │  │
+│  │           ▼                             ▼                  │  │
+│  │  ┌──────────────────────────────────────────────────────┐ │  │
+│  │  │           Llama 3.3 70B via Cerebras                 │ │  │
+│  │  │           (HuggingFace Inference Providers)          │ │  │
+│  │  └──────────────────────────────────────────────────────┘ │  │
+│  └───────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 📊 Dataset
+
+The system is trained on vehicle telemetry data with the following features:
+
+| Feature | Description |
+|---------|-------------|
+| `Local_X`, `Local_Y` | Vehicle position coordinates |
+| `v_Vel` | Velocity (m/s) |
+| `v_Acc` | Acceleration (m/s²) |
+| `Space_Headway` | Distance to lead vehicle |
+| `dis_cen` | Distance from lane center |
+| `i_l`, `i_r`, `i_f` | Lane change indicators |
+| `dis_l`, `dis_r`, `dis_f` | Distance to adjacent vehicles |
+
+---
 
 ## ⚙️ Installation
-1.  **Python**: 3.10+ recommended.
-2.  **Create environment**:
-    ```bash
-    python -m venv .venv
-    source .venv/bin/activate
-    pip install -r requirements.txt
-    ```
-3.  **Configure API Keys**:
-    -   Create a `.env` file or export variables:
-        ```bash
-        export HF_API_KEY="your_huggingface_token"
-        export HF_MODEL_ID="meta-llama/Llama-3.3-70B-Instruct"
-        ```
-        
-## ▶️ Run Instructions
-1.  **Start Backend API**:
-    ```bash
-    uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
-    ```
-2.  **Launch Dashboard**:
-    ```bash
-    streamlit run frontend/app.py
-    ```
-3.  **Verify Agents**:
-    -   Upload a sample CSV in the UI.
-    -   Click **"Run Safety Audit"** or **"Analyze Driver Style"**.
+
+### Prerequisites
+- Python 3.10+
+- pip or conda
+
+### Setup
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/TrajAI.git
+   cd TrajAI
+   ```
+
+2. **Create virtual environment**
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   ```
+
+3. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Configure environment**
+   
+   Create a `.env` file in the project root:
+   ```env
+   # HuggingFace Configuration
+   HF_TOKEN=your_huggingface_token
+   HF_MODEL_ID=meta-llama/Llama-3.3-70B-Instruct
+   LLAMA3_PROVIDER=cerebras
+   ```
+
+---
+
+## ▶️ Usage
+
+### Start the Backend API
+
+```bash
+uvicorn backend.main:app --host 0.0.0.0 --port 8000
+```
+
+### Launch the Dashboard
+
+```bash
+streamlit run frontend/app.py --server.port 8501
+```
+
+### Access the Application
+
+- **Dashboard**: http://localhost:8501
+- **API Docs**: http://localhost:8000/docs
+
+---
+
+## 📡 API Reference
+
+### Predict Trajectory
+
+```http
+POST /predict
+```
+
+**Request:**
+```json
+{
+  "sequence": [
+    {"Local_X": 5.0, "Local_Y": 100.0, "v_Vel": 25.0, ...},
+    {"Local_X": 5.1, "Local_Y": 125.0, "v_Vel": 25.5, ...}
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "trajectory": [
+    {"predicted_local_x": 5.2, "predicted_local_y": 150.0},
+    {"predicted_local_x": 5.3, "predicted_local_y": 175.0}
+  ]
+}
+```
+
+### Safety Audit
+
+```http
+POST /agent/safety-audit
+```
+
+**Request:**
+```json
+{
+  "sequence": [...],
+  "predicted_trajectory": [...]
+}
+```
+
+**Response:**
+```json
+{
+  "status": "WARNING",
+  "report": "Detailed safety analysis...",
+  "violations": ["tailgating", "speeding"],
+  "chain_steps": [...]
+}
+```
+
+### Driver Profile
+
+```http
+POST /agent/driver-profile
+```
+
+**Response:**
+```json
+{
+  "classification": "Aggressive",
+  "confidence": 85,
+  "report": "Driver behavior analysis...",
+  "recommendations": ["Maintain larger following distance", ...]
+}
+```
+
+---
+
+## 🛠️ Tech Stack
+
+| Component | Technology |
+|-----------|------------|
+| **ML Model** | PyTorch LSTM |
+| **LLM** | Llama 3.3 70B Instruct |
+| **Inference Provider** | Cerebras (via HuggingFace) |
+| **Agent Framework** | LangChain |
+| **Backend** | FastAPI |
+| **Frontend** | Streamlit |
+| **Embeddings** | HuggingFace Embeddings |
+
+---
 
 ## 🌟 Future Work
--   **Multi-Vehicle Coordination**: Agents negotiating right-of-way.
--   **Vision Integration**: Adding camera input to the Safety Auditor.
--   **Reinforcement Learning**: Using Driver Profiler feedback to train self-driving policies.
+
+- **Multi-Vehicle Coordination**: Agents negotiating right-of-way scenarios
+- **Vision Integration**: Camera input for enhanced safety analysis
+- **Reinforcement Learning**: Using profiler feedback to train driving policies
+- **Edge Deployment**: Optimized models for in-vehicle inference
+
+---
+
+## 📜 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+<div align="center">
+  <p>Built with ❤️ using PyTorch, LangChain, and Llama 3</p>
+</div>

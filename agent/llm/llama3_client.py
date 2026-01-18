@@ -15,8 +15,15 @@ from dotenv import load_dotenv
 from huggingface_hub import InferenceClient
 from langchain.llms.base import LLM
 
+# Gemini (Google AI) support
+try:
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    HAS_GEMINI = True
+except ImportError:
+    HAS_GEMINI = False
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "llama3_config.yaml"
+# ... (rest of constants)
 HF_TOKEN_ENV = "HF_LLAMA33_TOKEN"
 HF_MODEL_ENV = "HF_LLAMA33_MODEL"
 LLAMA3_BASE_ENV = "LLAMA3_API_BASE"
@@ -72,20 +79,20 @@ class Llama3LLM(LLM):
 
     def _build_hf_client(self) -> Optional[InferenceClient]:
         """
-        Initialize a Hugging Face inference client when requested.
+        Initialize a Hugging Face inference client.
+        Uses HuggingFace Inference Providers (supports Cerebras, SambaNova, etc.).
         """
         if MOCK_MODE:
             return None
-            
-        provider = (self.config.provider or "").lower()
-        base = (self.config.api_base or "").lower()
-        if provider == "huggingface" or "huggingface" in base:
-            return InferenceClient(
-                model=self.config.model,
-                token=self.config.api_key,
-                timeout=self.config.timeout,
-            )
-        return None
+        
+        # Use provider parameter for Inference Providers (Cerebras, SambaNova, etc.)
+        provider = self.config.provider if self.config.provider != "custom" else None
+        
+        return InferenceClient(
+            api_key=self.config.api_key,
+            timeout=self.config.timeout,
+            provider=provider,
+        )
 
     def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
         """
@@ -191,42 +198,33 @@ class Llama3LLM(LLM):
     def _call_hf_client(self, prompt: str, stop: Optional[List[str]] = None) -> str:
         """
         Handle providers available through huggingface_hub.InferenceClient.
-        Attempts chat-completions first (needed for Groq providers), then falls back to text-generation.
+        Uses chat.completions.create for HuggingFace Inference Providers (Cerebras, SambaNova, etc.).
         """
         client = getattr(self, "_hf_client", None)
         if client is None:
             raise RuntimeError("Hugging Face client not initialized.")
 
         messages = [
-            {
-                "role": "system",
-                "content": [{"type": "text", "text": SYSTEM_PROMPT}],
-            },
-            {
-                "role": "user",
-                "content": [{"type": "text", "text": prompt}],
-            },
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
         ]
 
-        # Prefer chat completion for providers that only expose conversational APIs.
-        if hasattr(client, "chat_completion"):
-            response = client.chat_completion(
+        # Use chat.completions.create for Inference Providers (Cerebras, etc.)
+        # The model format is: meta-llama/Llama-3.3-70B-Instruct:cerebras
+        try:
+            completion = client.chat.completions.create(
+                model=self.config.model,
                 messages=messages,
                 temperature=self.config.temperature,
                 max_tokens=self.config.max_tokens,
-                stop=stop,
             )
-            return self._parse_hf_chat_response(response)
-
-        # Fallback to text generation for providers that support it.
-        chat_prompt = self._format_chat_prompt(prompt)
-        return client.text_generation(
-            chat_prompt,
-            temperature=self.config.temperature,
-            max_new_tokens=self.config.max_tokens,
-            stop_sequences=stop,
-            return_full_text=False,
-        )
+            # Extract the response content
+            return completion.choices[0].message.content
+        except Exception as e:
+            # Log the actual error for debugging
+            import traceback
+            traceback.print_exc()
+            raise RuntimeError(f"Chat completion failed: {e}") from e
 
     @staticmethod
     def _parse_hf_chat_response(response: Dict[str, Any]) -> str:
@@ -268,23 +266,39 @@ class Llama3LLM(LLM):
         raise ValueError("Unexpected response format from Llama 3.")
 
 
-def load_llama3(config_path: Optional[Path] = None) -> Llama3LLM:
+def load_llama3(config_path: Optional[Path] = None) -> Any:
     """
     Load configuration from YAML and return a LangChain-compatible client.
+    Supports HuggingFace Inference Providers (Cerebras, SambaNova, etc.).
     """
     path = config_path or DEFAULT_CONFIG_PATH
-    if not path.exists():
-        raise FileNotFoundError(
-            f"Llama 3 config missing at {path}. Provide api_base and api_key entries."
-        )
-    with open(path, "r", encoding="utf-8") as config_file:
-        config_dict = yaml.safe_load(config_file) or {}
+    config_dict = {}
+    
+    if path.exists():
+        with open(path, "r", encoding="utf-8") as config_file:
+            config_dict = yaml.safe_load(config_file) or {}
+    else:
+        # If config file is missing, we rely entirely on environment variables
+        pass
 
     merged_config: Dict[str, Any] = dict(config_dict)
-    token_override = os.getenv(HF_TOKEN_ENV) or os.getenv(HF_COMPAT_TOKEN_ENV)
-    model_override = os.getenv(HF_MODEL_ENV) or os.getenv(HF_COMPAT_MODEL_ENV)
-    base_override = os.getenv(LLAMA3_BASE_ENV) or os.getenv(HF_COMPAT_BASE_ENV)
+    
+    # Check for various environment variable patterns
+    token_override = (
+        os.getenv(HF_TOKEN_ENV) 
+        or os.getenv(HF_COMPAT_TOKEN_ENV)
+        or os.getenv("HF_TOKEN")
+    )
+    model_override = (
+        os.getenv(HF_MODEL_ENV) 
+        or os.getenv(HF_COMPAT_MODEL_ENV)
+    )
+    base_override = (
+        os.getenv(LLAMA3_BASE_ENV) 
+        or os.getenv(HF_COMPAT_BASE_ENV)
+    )
     provider_override = os.getenv(LLAMA3_PROVIDER_ENV)
+
     if token_override:
         merged_config["api_key"] = token_override
     if model_override:
@@ -293,13 +307,33 @@ def load_llama3(config_path: Optional[Path] = None) -> Llama3LLM:
         merged_config["api_base"] = base_override
     if provider_override:
         merged_config["provider"] = provider_override
-
-    required_fields = {"api_base", "api_key"}
-    missing = [field for field in required_fields if not merged_config.get(field)]
-    if missing:
-        raise ValueError(
-            f"Llama 3 config missing fields: {missing}. Provide them in the YAML file or .env."
+    
+    # Check for Gemini first
+    gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if gemini_key and HAS_GEMINI:
+        model_id = (
+            os.getenv("GEMINI_MODEL_ID")
+            or os.getenv("GEMINI_MODEL")
         )
-
+        if not model_id:
+            raise ValueError("GEMINI_MODEL_ID (or GEMINI_MODEL) must be set in the environment for Gemini usage.")
+        return ChatGoogleGenerativeAI(
+            model=model_id,
+            google_api_key=gemini_key,
+            temperature=merged_config.get("temperature", 0.2),
+            convert_system_message_to_human=False,
+            timeout=None,
+        )
+    
+    # For HuggingFace Inference Providers, we only need api_key and model
+    if not merged_config.get("api_key"):
+        raise ValueError(
+            "HF_TOKEN must be set in the environment for HuggingFace Inference Providers."
+        )
+    
+    # Set a default api_base if not provided (not used for HF Inference Providers)
+    if not merged_config.get("api_base"):
+        merged_config["api_base"] = "https://api-inference.huggingface.co"
+    
     config = Llama3Config(**merged_config)
     return Llama3LLM(config)

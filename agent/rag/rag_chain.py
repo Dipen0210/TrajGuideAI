@@ -1,5 +1,5 @@
 """
-Retrieval-Augmented Generation chain using Chroma and Llama 3.
+Retrieval-Augmented Generation chain using Chroma and Gemini.
 """
 
 from __future__ import annotations
@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import Dict, List
 
 from langchain.chains import RetrievalQA
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
 
 from agent.llm.llama3_client import load_llama3
 
@@ -29,39 +29,55 @@ def _server_resolves(host: str = "huggingface.co") -> bool:
     except socket.gaierror:
         return False
 
-_QA_CHAIN = None
-try:
-    if not _server_resolves():
-        raise RuntimeError("Cannot resolve huggingface.co; skipping RAG initialization.")
 
-    _EMBEDDINGS = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
-    _VECTORSTORE = Chroma(
-        persist_directory=str(PERSIST_DIR),
-        embedding_function=_EMBEDDINGS,
-    )
-    _RETRIEVER = _VECTORSTORE.as_retriever(search_kwargs={"k": 3})
-    _QA_CHAIN = RetrievalQA.from_chain_type(
-        llm=load_llama3(),
-        chain_type="stuff",
-        retriever=_RETRIEVER,
-        return_source_documents=True,
-    )
-except Exception as exc:  # pylint: disable=broad-except
-    LOGGER.warning("Failed to initialize RAG chain: %s", exc)
-    _QA_CHAIN = None
+# Lazy initialization to avoid gRPC mutex locks on startup
+_QA_CHAIN = None
+_INITIALIZED = False
+
+
+def _lazy_init_rag():
+    """Initialize RAG chain lazily on first use."""
+    global _QA_CHAIN, _INITIALIZED
+    
+    if _INITIALIZED:
+        return
+    
+    _INITIALIZED = True
+    
+    try:
+        if not _server_resolves():
+            raise RuntimeError("Cannot resolve huggingface.co; skipping RAG initialization.")
+
+        _EMBEDDINGS = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+        _VECTORSTORE = Chroma(
+            persist_directory=str(PERSIST_DIR),
+            embedding_function=_EMBEDDINGS,
+        )
+        _RETRIEVER = _VECTORSTORE.as_retriever(search_kwargs={"k": 3})
+        _QA_CHAIN = RetrievalQA.from_chain_type(
+            llm=load_llama3(),
+            chain_type="stuff",
+            retriever=_RETRIEVER,
+            return_source_documents=True,
+        )
+    except Exception as exc:  # pylint: disable=broad-except
+        LOGGER.warning("Failed to initialize RAG chain: %s", exc)
+        _QA_CHAIN = None
 
 
 def rag_query(question: str) -> Dict[str, List[dict] | str]:
     """
     Runs retrieval + Llama 3 generation and returns the answer and source metadata.
     """
+    _lazy_init_rag()
+    
     if _QA_CHAIN is None:
         LOGGER.info("RAG chain unavailable; returning fallback response.")
         return {
             "answer": "Context retrieval is temporarily unavailable. Please retry later.",
             "sources": [],
         }
-    result = _QA_CHAIN(question)
+    result = _QA_CHAIN.invoke({"query": question})
     return {
         "answer": result["result"],
         "sources": [doc.metadata for doc in result.get("source_documents", [])],

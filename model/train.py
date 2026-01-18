@@ -129,6 +129,7 @@ def main() -> None:
         )
 
     num_features = features.shape[2]
+    output_size = targets.shape[1]
     (train_features, train_targets), (val_features, val_targets) = split_dataset(
         features, targets, args.train_split
     )
@@ -138,6 +139,7 @@ def main() -> None:
 
     model = TrajectoryLSTM(
         input_size=num_features,
+        output_size=output_size,
         hidden_size=args.hidden_size,
         num_layers=args.num_layers,
         dropout=args.dropout,

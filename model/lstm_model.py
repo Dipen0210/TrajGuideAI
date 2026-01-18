@@ -12,13 +12,14 @@ from torch import nn
 
 class TrajectoryLSTM(nn.Module):
     """
-    Multi-layer LSTM followed by a linear projection to predict next (Local_X, Local_Y).
+    Multi-layer LSTM followed by a linear projection to predict next full state (12 features).
     """
 
     def __init__(
         self,
         input_size: int,
         hidden_size: int = 64,
+        output_size: int = 12,
         num_layers: int = 2,
         dropout: float = 0.0,
     ) -> None:
@@ -30,14 +31,14 @@ class TrajectoryLSTM(nn.Module):
             dropout=dropout if num_layers > 1 else 0.0,
             batch_first=True,
         )
-        self.head = nn.Linear(hidden_size, 2)
+        self.head = nn.Linear(hidden_size, output_size)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Args:
             x: tensor of shape (batch_size, seq_len, num_features)
         Returns:
-            Predictions of shape (batch_size, 2)
+            Predictions of shape (batch_size, output_size)
         """
         outputs, _ = self.lstm(x)
         last_hidden = outputs[:, -1, :]

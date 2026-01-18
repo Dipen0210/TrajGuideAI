@@ -4,7 +4,7 @@ LangChain tool for running trajectory predictions via the trained LSTM model.
 
 from __future__ import annotations
 
-from typing import List
+from typing import List, Dict, Any
 
 import pandas as pd
 from langchain.tools import tool
@@ -40,13 +40,15 @@ def _sequence_to_dataframe(sequence: List) -> pd.DataFrame:
 
     return df[columns]
 
-
 @tool("predict_trajectory")
-def predict_trajectory(input_sequence: List) -> dict:
+def predict_trajectory(input_sequence: List[Dict[str, Any]]) -> dict:
     """
     Receives a raw time-series sequence of dictionaries or lists.
     Preprocess using TrajectoryInference and return the next-step prediction.
     """
-
-    df = _sequence_to_dataframe(input_sequence)
-    return _INFERENCE.predict(df, steps=3)
+    try:
+        df = _sequence_to_dataframe(input_sequence)
+        # Check constraints before calling inference if possible, or just catch
+        return _INFERENCE.predict(df, steps=3)
+    except Exception as e:
+        return {"error": f"Prediction failed: {str(e)}. (Hint: Sequence length must be >= 20)"}

@@ -11,8 +11,9 @@ from __future__ import annotations
 
 from typing import List, Dict, Any, Optional
 
-from langchain.agents import initialize_agent
+from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain.memory import ConversationBufferMemory
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from agent.llm.llama3_client import load_llama3
 from agent.tools.prediction_tool import predict_trajectory
@@ -86,16 +87,23 @@ For DRIVER PROFILING requests, follow this 4-step workflow:
 Always use the appropriate tools before making conclusions.
 """
     
-    _AGENT = initialize_agent(
-        tools=_TOOLS,
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", PREFIX),
+        ("human", "{input}"),
+        MessagesPlaceholder(variable_name="agent_scratchpad"),
+    ])
+    
+    agent = create_tool_calling_agent(
         llm=_LLM,
-        agent="structured-chat-zero-shot-react-description",
+        tools=_TOOLS,
+        prompt=prompt
+    )
+    
+    _AGENT = AgentExecutor(
+        agent=agent,
+        tools=_TOOLS,
         verbose=True,
-        memory=_MEMORY,
         handle_parsing_errors=True,
-        agent_kwargs={
-            "prefix": PREFIX,
-        },
     )
 
 
@@ -117,7 +125,10 @@ def run_agent(query: str) -> str:
 # Convenience Functions for Specialized Agents
 # ============================================================================
 
-def audit_trajectory(vehicle_sequence: List[Dict[str, Any]]) -> Dict[str, Any]:
+def audit_trajectory(
+    vehicle_sequence: List[Dict[str, Any]],
+    predicted_trajectory: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
     """
     Perform a safety audit on a vehicle trajectory sequence.
     
@@ -130,6 +141,7 @@ def audit_trajectory(vehicle_sequence: List[Dict[str, Any]]) -> Dict[str, Any]:
             - v_Acc: Acceleration
             - Space_Headway: Distance to lead vehicle
             - dis_cen, i_l, i_r, i_f, dis_l, dis_r, dis_f: Lane indicators
+        predicted_trajectory: Optional precomputed prediction to avoid re-running the model
     
     Returns:
         Dictionary containing:
@@ -137,7 +149,10 @@ def audit_trajectory(vehicle_sequence: List[Dict[str, Any]]) -> Dict[str, Any]:
             - report: Full safety audit report
             - violations: List of detected violations
     """
-    return run_safety_audit(vehicle_sequence)
+    return run_safety_audit(
+        vehicle_sequence,
+        predicted_trajectory=predicted_trajectory,
+    )
 
 
 def profile_driver(
@@ -145,6 +160,7 @@ def profile_driver(
     acceleration_series: List[float],
     lane_changes: Optional[int] = None,
     headway_series: Optional[List[float]] = None,
+    predicted_trajectory: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
     Analyze driving behavior and classify the driver style.
@@ -156,6 +172,7 @@ def profile_driver(
         acceleration_series: List of acceleration values (m/s²)
         lane_changes: Optional count of lane changes
         headway_series: Optional list of headway values
+        predicted_trajectory: Optional precomputed trajectory for context
     
     Returns:
         Dictionary containing:
@@ -169,10 +186,14 @@ def profile_driver(
         acceleration_series=acceleration_series,
         lane_changes=lane_changes,
         headway_series=headway_series,
+        predicted_trajectory=predicted_trajectory,
     )
 
 
-def profile_driver_from_sequence(vehicle_sequence: List[Dict[str, Any]]) -> Dict[str, Any]:
+def profile_driver_from_sequence(
+    vehicle_sequence: List[Dict[str, Any]],
+    predicted_trajectory: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
     """
     Profile driver from a full vehicle state sequence.
     
@@ -181,11 +202,15 @@ def profile_driver_from_sequence(vehicle_sequence: List[Dict[str, Any]]) -> Dict
     
     Args:
         vehicle_sequence: List of vehicle state dictionaries
+        predicted_trajectory: Optional precomputed trajectory for context
     
     Returns:
         Driver profile result dictionary
     """
-    return run_driver_profile_from_sequence(vehicle_sequence)
+    return run_driver_profile_from_sequence(
+        vehicle_sequence,
+        predicted_trajectory=predicted_trajectory,
+    )
 
 
 # ============================================================================
@@ -237,4 +262,3 @@ if __name__ == "__main__":
     )
     print("=== Unified Agent ===")
     print(run_agent(sample_query))
-

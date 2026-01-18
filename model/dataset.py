@@ -30,7 +30,7 @@ DEFAULT_COLUMNS: Sequence[str] = (
     "dis_r",
     "dis_f",
 )
-TARGET_COLUMNS: Tuple[str, str] = ("Local_X", "Local_Y")
+LEGACY_TARGET_COLUMNS: Tuple[str, str] = ("Local_X", "Local_Y")
 
 
 def load_all_csv_files(raw_data_dir: Path, columns: Sequence[str]) -> pd.DataFrame:
@@ -61,7 +61,7 @@ def build_sequences(
     data: np.ndarray,
     window_size: int,
     prediction_horizon: int,
-    target_indices: Tuple[int, int],
+    target_indices: Sequence[int],
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Construct sliding windows and prediction targets from feature arrays.
@@ -74,14 +74,14 @@ def build_sequences(
         )
 
     features = np.zeros((limit, window_size, data.shape[1]), dtype=np.float32)
-    targets = np.zeros((limit, 2), dtype=np.float32)
+    targets = np.zeros((limit, len(target_indices)), dtype=np.float32)
 
     for start_idx in range(limit):
         window_end = start_idx + window_size
         target_idx = window_end + prediction_horizon - 1
         features[start_idx] = data[start_idx:window_end]
-        targets[start_idx, 0] = data[target_idx, target_indices[0]]
-        targets[start_idx, 1] = data[target_idx, target_indices[1]]
+        for target_slot, feature_idx in enumerate(target_indices):
+            targets[start_idx, target_slot] = data[target_idx, feature_idx]
 
     return features, targets
 
@@ -112,6 +112,7 @@ class TrajectoryPreprocessor:
     processed_path: Path = field(default_factory=_default_processed_path)
     scaler_path: Path = field(default_factory=_default_scaler_path)
     feature_columns: Sequence[str] = DEFAULT_COLUMNS
+    target_columns: Optional[Sequence[str]] = None
 
     def load_data(self) -> pd.DataFrame:
         return load_all_csv_files(self.raw_data_dir, self.feature_columns)
@@ -135,10 +136,13 @@ class TrajectoryPreprocessor:
         df = self.clean_data(self.load_data())
         data, scaler = self.normalize(df)
 
-        target_indices = (
-            self.feature_columns.index(TARGET_COLUMNS[0]),
-            self.feature_columns.index(TARGET_COLUMNS[1]),
-        )
+        # Default to predicting the full state; fallback to legacy Local_X/Local_Y if specified.
+        target_cols = list(self.target_columns) if self.target_columns else list(self.feature_columns)
+        missing_targets = [col for col in target_cols if col not in self.feature_columns]
+        if missing_targets:
+            raise ValueError(f"target_columns contains unknown features: {missing_targets}")
+
+        target_indices = tuple(self.feature_columns.index(col) for col in target_cols)
         features, targets = build_sequences(data, window_size, prediction_horizon, target_indices)
 
         if save:
@@ -163,7 +167,7 @@ class TrajectoryDataset(Dataset):
 
     def __init__(
         self,
-        npz_path: Optional[Path] = Path("vehicle-trajectory-agent/data/processed/dataset.npz"),
+        npz_path: Optional[Path] = _default_processed_path(),
         features: Optional[np.ndarray] = None,
         targets: Optional[np.ndarray] = None,
     ) -> None:
@@ -190,7 +194,7 @@ class TrajectoryDataset(Dataset):
 
 
 def load_processed_dataset(
-    npz_path: Path = Path("vehicle-trajectory-agent/data/processed/dataset.npz"),
+    npz_path: Path = _default_processed_path(),
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Convenience loader that returns features and targets arrays from the processed dataset file.

@@ -10,7 +10,8 @@ Endpoints:
 
 from __future__ import annotations
 
-from typing import Dict, List
+import traceback
+from typing import Dict, List, Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -51,9 +52,8 @@ app.add_middleware(
 
 INFERENCE = TrajectoryInference()
 
-
 @app.get("/")
-def root() -> Dict[str, str]:
+def root() -> Dict[str, Any]:
     return {
         "message": "Agentic Vehicle Trajectory Prediction API is running.",
         "version": "2.0.0",
@@ -69,6 +69,7 @@ def predict_endpoint(request: PredictRequest) -> PredictResponse:
         prediction = INFERENCE.predict(df, steps=3)
         return PredictResponse(**prediction)
     except Exception as exc:
+        traceback.print_exc()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -100,13 +101,17 @@ def safety_audit_endpoint(request: SafetyAuditRequest) -> SafetyAuditResponse:
         - report: Full LLM-generated safety report
     """
     try:
-        result = audit_trajectory(request.sequence)
+        result = audit_trajectory(
+            request.sequence,
+            predicted_trajectory=request.predicted_trajectory,
+        )
         return SafetyAuditResponse(
             status=result.get("status", "UNKNOWN"),
             violations=result.get("violations", []),
             report=result.get("report", ""),
         )
     except Exception as exc:
+        traceback.print_exc()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -127,13 +132,17 @@ def driver_profile_endpoint(request: DriverProfileRequest) -> DriverProfileRespo
     try:
         # Check if full sequence provided or just metrics
         if request.sequence:
-            result = profile_driver_from_sequence(request.sequence)
+            result = profile_driver_from_sequence(
+                request.sequence,
+                predicted_trajectory=request.predicted_trajectory,
+            )
         else:
             result = profile_driver(
                 velocity_series=request.velocity_series or [],
                 acceleration_series=request.acceleration_series or [],
                 lane_changes=request.lane_changes,
                 headway_series=request.headway_series,
+                predicted_trajectory=request.predicted_trajectory,
             )
         
         return DriverProfileResponse(

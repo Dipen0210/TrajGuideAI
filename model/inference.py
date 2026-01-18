@@ -25,7 +25,8 @@ DEFAULT_SCALER_PATH = BASE_DIR / "data/processed/scalers.pkl"
 def load_model(
     checkpoint_path: Path,
     input_size: int,
-    hidden_size: int,
+    hidden_size: Optional[int],
+    output_size: Optional[int],
     num_layers: int,
     dropout: float,
     device: torch.device,
@@ -36,13 +37,29 @@ def load_model(
     if not checkpoint_path.exists():
         raise FileNotFoundError(f"Checkpoint not found at {checkpoint_path}")
 
+    state_dict = torch.load(checkpoint_path, map_location=device)
+    inferred_hidden_size = (
+        state_dict["lstm.weight_ih_l0"].shape[0] // 4 if hidden_size is None else hidden_size
+    )
+    inferred_output_size = state_dict["head.weight"].shape[0] if output_size is None else output_size
+
+    # Guardrail: make sure user-specified dims match the checkpoint to avoid silent shape errors.
+    if hidden_size is not None and hidden_size != inferred_hidden_size:
+        raise ValueError(
+            f"hidden_size={hidden_size} does not match checkpoint hidden_size={inferred_hidden_size}"
+        )
+    if output_size is not None and output_size != inferred_output_size:
+        raise ValueError(
+            f"output_size={output_size} does not match checkpoint output_size={inferred_output_size}"
+        )
+
     model = TrajectoryLSTM(
         input_size=input_size,
-        hidden_size=hidden_size,
+        hidden_size=inferred_hidden_size,
+        output_size=inferred_output_size,
         num_layers=num_layers,
         dropout=dropout,
     )
-    state_dict = torch.load(checkpoint_path, map_location=device)
     model.load_state_dict(state_dict)
     model.to(device)
     model.eval()
@@ -131,7 +148,8 @@ class TrajectoryInference:
         scaler_path: Path = DEFAULT_SCALER_PATH,
         feature_columns: Optional[Sequence[str]] = None,
         window_size: int = 20,
-        hidden_size: int = 128,
+        hidden_size: Optional[int] = None,
+        output_size: Optional[int] = None,
         num_layers: int = 2,
         dropout: float = 0.0,
     ) -> None:
@@ -143,13 +161,10 @@ class TrajectoryInference:
             checkpoint_path=checkpoint_path,
             input_size=len(self.feature_columns),
             hidden_size=hidden_size,
+            output_size=output_size,  # Defaults to predicting full state vector
             num_layers=num_layers,
             dropout=dropout,
             device=self.device,
-        )
-        self.target_indices = (
-            self.feature_columns.index("Local_X"),
-            self.feature_columns.index("Local_Y"),
         )
 
     def preprocess(self, sequence: Iterable) -> np.ndarray:
@@ -158,21 +173,45 @@ class TrajectoryInference:
         """
         return preprocess_sequence(sequence, self.feature_columns, self.scaler, self.window_size)
 
-    def _inverse_transform(self, prediction: np.ndarray) -> np.ndarray:
+    def _inverse_transform(self, prediction: np.ndarray, target_indices: list = None) -> np.ndarray:
         """
         Map normalized predictions back to the original scale.
+        
+        If the model outputs fewer features than the scaler expects (legacy 2-output model),
+        we only inverse-transform those specific columns.
         """
-        data_min = self.scaler.data_min_[list(self.target_indices)]
-        data_max = self.scaler.data_max_[list(self.target_indices)]
-        data_range = data_max - data_min
-        return prediction * data_range + data_min
+        num_features = self.scaler.n_features_in_
+        
+        # If prediction matches scaler size, do full inverse transform
+        if prediction.shape[0] == num_features:
+            return self.scaler.inverse_transform(prediction.reshape(1, -1)).flatten()
+        
+        # Legacy model: prediction is only for specific target columns (e.g., Local_X, Local_Y)
+        # We need to inverse transform only those columns
+        if target_indices is None:
+            # Assume first N columns where N = prediction size
+            target_indices = list(range(prediction.shape[0]))
+        
+        # Create a dummy full-size array, fill in the predictions, inverse transform, then extract
+        dummy = np.zeros((1, num_features), dtype=np.float32)
+        
+        # Use the scaler's min/max values to place predictions correctly
+        for i, idx in enumerate(target_indices):
+            dummy[0, idx] = prediction[i]
+        
+        # Inverse transform the full array
+        full_inverse = self.scaler.inverse_transform(dummy).flatten()
+        
+        # Return only the target columns
+        return np.array([full_inverse[idx] for idx in target_indices])
 
     def predict(self, sequence: Iterable, steps: int = 1) -> dict:
         """
-        Predict the next `steps` (Local_X, Local_Y) values autoregressively.
+        Predict the next `steps` trajectory points.
+        
+        Handles both legacy 2-output models (Local_X, Local_Y) and full 12-feature models.
         """
         # 1. Preprocess the initial window
-        # distinct from self.preprocess because we need mutable access to the buffer
         df = _sequence_to_dataframe(sequence, self.feature_columns)
         if len(df) < self.window_size:
             raise ValueError(f"Sequence length {len(df)} < window_size={self.window_size}")
@@ -180,8 +219,17 @@ class TrajectoryInference:
         current_window_df = df.tail(self.window_size).copy()
         current_window_vals = current_window_df[self.feature_columns].values.astype(np.float32)
         
-        # We need to perform scaling manualy inside the loop to enable autoregression
-        # But scaling the whole window every time is inefficient, yet easiest for consistency.
+        # Determine model output size and target columns
+        # Check the model's output layer to determine what it predicts
+        output_size = self.model.head.out_features
+        
+        # For legacy 2-output models, targets are Local_X, Local_Y (indices 0, 1)
+        if output_size == 2:
+            target_columns = ["Local_X", "Local_Y"]
+            target_indices = [0, 1]  # First two columns
+        else:
+            target_columns = list(self.feature_columns)
+            target_indices = list(range(len(self.feature_columns)))
         
         predictions = []
 
@@ -195,29 +243,35 @@ class TrajectoryInference:
             # Predict
             self.model.eval()
             with torch.no_grad():
-                output = self.model(tensor_input) # shape (1, 2)
+                output = self.model(tensor_input)
             
             # Inverse transform output
-            # We construct a dummy row matching scaler input shape to inverse transform correctly
-            # or we assume we can inverse transform just the target cols if we extract min/max manually.
-            # let's use the helper _inverse_transform which uses partial indexing
-            norm_pred = output.squeeze(0).cpu().numpy() # [x_norm, y_norm]
-            real_pred = self._inverse_transform(norm_pred) # [x_real, y_real]
+            norm_pred = output.squeeze(0).cpu().numpy()
+            real_pred = self._inverse_transform(norm_pred, target_indices)
             
-            pred_x, pred_y = float(real_pred[0]), float(real_pred[1])
-            predictions.append({"predicted_local_x": pred_x, "predicted_local_y": pred_y})
+            # Package result
+            pred_dict = {}
+            for col, val in zip(target_columns, real_pred):
+                pred_dict[col] = float(val)
+            
+            # Add convenient access keys for compatibility
+            if "Local_X" in pred_dict:
+                pred_dict["predicted_local_x"] = pred_dict["Local_X"]
+            if "Local_Y" in pred_dict:
+                pred_dict["predicted_local_y"] = pred_dict["Local_Y"]
+            
+            predictions.append(pred_dict)
             
             # Update window for next step:
-            # 1. Take the last row of the current window (unscaled)
-            new_row = current_window_vals[-1].copy()
+            # For legacy model, we only update X and Y; keep other features unchanged
+            if output_size == 2:
+                new_row = current_window_vals[-1].copy()
+                new_row[0] = real_pred[0]  # Local_X
+                new_row[1] = real_pred[1]  # Local_Y
+            else:
+                new_row = real_pred
             
-            # 2. Update the target columns with predicted X, Y
-            # Note: This assumes other features (v, a, etc) stay constant or are ignored by the model's next step sensitivity
-            # Ideally we'd update velocity based on delta pos, but for short horizon constant state is OK.
-            new_row[self.target_indices[0]] = pred_x
-            new_row[self.target_indices[1]] = pred_y
-            
-            # 3. Slide window: drop first, append new
+            # Slide window: drop first, append new
             current_window_vals = np.vstack([current_window_vals[1:], new_row])
             
         return {"trajectory": predictions}
